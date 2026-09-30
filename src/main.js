@@ -4,7 +4,11 @@ import { TEAMS, TRACKS, CLASSES, THEMES, POINTS } from './data.js';
 import { Race } from './race.js';
 import { Input } from './input.js';
 import { Audio } from './audio.js';
-import { createPostPass, psxUniforms } from './psx.js';
+import { createPostPass, psxUniforms, renderStyle } from './psx.js';
+import { EffectComposer } from '../vendor/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from '../vendor/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from '../vendor/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from '../vendor/addons/postprocessing/OutputPass.js';
 import { particleScale } from './particles.js';
 import { buildShipModel } from './shipmodels.js';
 import { drawRaceHUD, text, panel, fmtTime, drawStatBar, teamColor } from './hud.js';
@@ -14,38 +18,94 @@ const canvas = document.getElementById('game');
 const hudCanvas = document.getElementById('hud');
 const hud = hudCanvas.getContext('2d');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-renderer.setPixelRatio(1);
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.autoClear = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(70, 4 / 3, 0.5, 8000);
+
+// Retro pipeline: low-res target, then quantise/dither to the screen.
 const rt = new THREE.WebGLRenderTarget(320, 240, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter, depthBuffer: true });
 rt.texture.colorSpace = THREE.SRGBColorSpace;
 const post = createPostPass();
 post.mat.uniforms.tDiffuse.value = rt.texture;
+
+// Modern pipeline: MSAA HDR render, bloom, filmic tone mapping.
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.45, 0.85);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 
 // Team preview scene for the selection screen.
 const previewScene = new THREE.Scene();
 const previewCam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
 previewCam.position.set(0, 3.2, 9.5);
 previewCam.lookAt(0, 0, 0);
-const previewModels = TEAMS.map((t) => { const m = buildShipModel(t).mesh; previewScene.add(m); m.visible = false; return m; });
+previewScene.add(new THREE.HemisphereLight(0xcfe0ff, 0x303040, 1.6));
+const previewSun = new THREE.DirectionalLight(0xffffff, 2.5);
+previewSun.position.set(3, 6, 4);
+previewScene.add(previewSun);
+let previewModels = [];
+function rebuildPreview() {
+  previewModels.forEach((m) => previewScene.remove(m));
+  previewModels = TEAMS.map((t) => { const m = buildShipModel(t).mesh; previewScene.add(m); m.visible = false; return m; });
+}
 
 const settings = loadSettings();
+renderStyle.modern = settings.graphics !== 'retro';
+document.body.classList.toggle('retro', !renderStyle.modern);
+rebuildPreview();
 const params = new URLSearchParams(location.search);
 const AUTOPILOT = params.has('autopilot'); // testing aid: the AI flies the player's craft
-let W = 320, H = 240, HUD_SCALE = 2;
+let W = 320, H = 240;
+// Adaptive quality for modern mode: 2 = full, 1 = reduced resolution, 0 = also no shadows/bloom.
+let quality = 2;
+const perf = { time: 0, frames: 0, settle: 3 };
+function adaptQuality(dt) {
+  if (!renderStyle.modern || quality === 0 || game.state === 'loading') return;
+  if (perf.settle > 0) { perf.settle -= dt; return; }
+  perf.time += dt; perf.frames++;
+  if (perf.time < 2) return;
+  const fps = perf.frames / perf.time;
+  perf.time = 0; perf.frames = 0;
+  if (fps < 45) {
+    quality--;
+    perf.settle = 2;
+    resize();
+  }
+}
+
 function resize() {
-  const aspect = Math.max(1, Math.min(2.4, innerWidth / innerHeight));
-  H = settings.hires ? 480 : 240;
-  W = Math.round(H * aspect);
-  renderer.setSize(W, H, false);
-  rt.setSize(W, H);
-  HUD_SCALE = settings.hires ? 1 : 2;
-  hudCanvas.width = W * HUD_SCALE; hudCanvas.height = H * HUD_SCALE;
+  if (renderStyle.modern) {
+    const pr = quality >= 2 ? Math.min(window.devicePixelRatio || 1, 2) : quality === 1 ? Math.min(1, window.devicePixelRatio || 1) : 0.75;
+    W = innerWidth; H = innerHeight;
+    renderer.setPixelRatio(pr);
+    renderer.setSize(W, H, false);
+    composer.setPixelRatio(pr);
+    composer.setSize(W, H);
+    hudCanvas.width = Math.round(W * pr); hudCanvas.height = Math.round(H * pr);
+    particleScale.value = (H * pr) / 4;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    renderer.shadowMap.enabled = quality > 0;
+    bloom.enabled = quality > 0;
+    scene.traverse((o) => { if (o.material && o.material.needsUpdate !== undefined && o.isMesh) o.material.needsUpdate = true; });
+  } else {
+    const aspect = Math.max(1, Math.min(2.4, innerWidth / innerHeight));
+    H = settings.hires ? 480 : 240;
+    W = Math.round(H * aspect);
+    renderer.setPixelRatio(1);
+    renderer.setSize(W, H, false);
+    rt.setSize(W, H);
+    const k = settings.hires ? 1 : 2;
+    hudCanvas.width = W * k; hudCanvas.height = H * k;
+    particleScale.value = H / 4;
+    renderer.toneMapping = THREE.NoToneMapping;
+    renderer.shadowMap.enabled = false;
+  }
   camera.aspect = W / H; camera.updateProjectionMatrix();
-  particleScale.value = H / 4;
   applySettings();
 }
 window.addEventListener('resize', resize);
@@ -57,8 +117,18 @@ function applySettings() {
   audio.setVolumes(settings.music, settings.sfx);
 }
 
+function setGraphics(modern) {
+  settings.graphics = modern ? 'modern' : 'retro';
+  saveSettings();
+  renderStyle.modern = modern;
+  document.body.classList.toggle('retro', !modern);
+  resize();
+  rebuildPreview();
+  startAttract(game.attractTrack);
+}
+
 function loadSettings() {
-  const def = { music: 0.6, sfx: 0.8, wobble: true, affine: true, dither: true, hires: false, laps: 3 };
+  const def = { graphics: 'modern', music: 0.6, sfx: 0.8, wobble: true, affine: true, dither: true, hires: false, laps: 3 };
   try { return { ...def, ...JSON.parse(localStorage.getItem('hoverline.settings') || '{}') }; } catch { return def; }
 }
 function saveSettings() { try { localStorage.setItem('hoverline.settings', JSON.stringify(settings)); } catch { /* storage unavailable */ } }
@@ -86,7 +156,7 @@ const game = {
 
 function startAttract(trackIndex = Math.floor(Math.random() * TRACKS.length)) {
   if (game.race) game.race.dispose();
-  game.race = new Race({ scene, camera, audio, trackDef: TRACKS[trackIndex], classIndex: 1, mode: 'attract' });
+  game.race = new Race({ scene, camera, audio, renderer, trackDef: TRACKS[trackIndex], classIndex: 1, mode: 'attract' });
   game.attractTrack = trackIndex;
 }
 
@@ -96,7 +166,7 @@ function startRace() {
   setTimeout(() => {
     if (game.race) game.race.dispose();
     const opts = {
-      scene, camera, audio, trackDef: TRACKS[game.track], classIndex: game.classIndex,
+      scene, camera, audio, renderer, trackDef: TRACKS[game.track], classIndex: game.classIndex,
       mode: game.mode === 'time' ? 'time' : 'race', playerTeam: game.team, playerPilot: game.pilot, laps: Number(params.get('laps')) || settings.laps, autopilot: AUTOPILOT,
     };
     if (game.mode === 'champ' && game.champ.grid) opts.grid = game.champ.grid;
@@ -179,16 +249,21 @@ function optionsMenu() {
   const onoff = (v) => (v ? 'ON' : 'OFF');
   const adj = (key, d) => { settings[key] = Math.max(0, Math.min(1, Math.round((settings[key] + d) * 10) / 10)); applySettings(); saveSettings(); };
   const tog = (key) => () => { settings[key] = !settings[key]; key === 'hires' ? resize() : applySettings(); saveSettings(); };
-  return {
-    title: 'OPTIONS',
-    items: [
-      { label: 'MUSIC VOLUME', value: () => pct(settings.music), left: () => adj('music', -0.1), right: () => adj('music', 0.1) },
-      { label: 'EFFECTS VOLUME', value: () => pct(settings.sfx), left: () => adj('sfx', -0.1), right: () => adj('sfx', 0.1) },
-      { label: 'RACE LAPS', value: () => `${settings.laps}`, left: () => { settings.laps = Math.max(1, settings.laps - 1); saveSettings(); }, right: () => { settings.laps = Math.min(9, settings.laps + 1); saveSettings(); } },
+  const gfx = () => { setGraphics(!renderStyle.modern); const m = optionsMenu(); m.sel = 0; toMenu(m); };
+  const retroOnly = renderStyle.modern ? [] : [
       { label: 'VERTEX WOBBLE', value: () => onoff(settings.wobble), action: tog('wobble'), left: tog('wobble'), right: tog('wobble') },
       { label: 'TEXTURE WARP', value: () => onoff(settings.affine), action: tog('affine'), left: tog('affine'), right: tog('affine') },
       { label: 'COLOUR DITHER', value: () => onoff(settings.dither), action: tog('dither'), left: tog('dither'), right: tog('dither') },
       { label: 'RESOLUTION', value: () => (settings.hires ? '480P' : '240P'), action: tog('hires'), left: tog('hires'), right: tog('hires') },
+  ];
+  return {
+    title: 'OPTIONS',
+    items: [
+      { label: 'GRAPHICS', value: () => (renderStyle.modern ? 'MODERN' : 'RETRO 32-BIT'), action: gfx, left: gfx, right: gfx },
+      { label: 'MUSIC VOLUME', value: () => pct(settings.music), left: () => adj('music', -0.1), right: () => adj('music', 0.1) },
+      { label: 'EFFECTS VOLUME', value: () => pct(settings.sfx), left: () => adj('sfx', -0.1), right: () => adj('sfx', 0.1) },
+      { label: 'RACE LAPS', value: () => `${settings.laps}`, left: () => { settings.laps = Math.max(1, settings.laps - 1); saveSettings(); }, right: () => { settings.laps = Math.min(9, settings.laps + 1); saveSettings(); } },
+      ...retroOnly,
       { label: 'BACK', action: () => toMenu(mainMenu()) },
     ],
     back: () => toMenu(mainMenu()),
@@ -330,6 +405,7 @@ function frame(now) {
   let dt = Math.min(0.1, (now - last) / 1000);
   last = now;
   game.t += dt;
+  adaptQuality(dt);
   const inp = input.poll();
   if (Object.values(inp).some((v) => v)) audio.init();
 
@@ -386,6 +462,7 @@ function frame(now) {
 
 // ---- Render ------------------------------------------------------------------
 function render() {
+  if (renderStyle.modern) { renderModern(); drawHUD(); return; }
   renderer.setRenderTarget(rt);
   renderer.render(scene, camera);
   if (game.state === 'menu' && game.menu.kind === 'team') {
@@ -409,6 +486,24 @@ function render() {
   renderer.setRenderTarget(null);
   renderer.render(post.scene, post.cam);
   drawHUD();
+}
+
+function renderModern() {
+  composer.render();
+  if (game.state === 'menu' && game.menu.kind === 'team') {
+    const ti = game.menu.fixedTeam ?? game.menu.sel;
+    previewModels.forEach((m, i) => { m.visible = i === ti; m.rotation.y = game.t * 0.8; m.position.y = Math.sin(game.t * 2) * 0.1; });
+    const h = Math.round(H * 0.62), w = Math.round(h * 1.3);
+    const x = Math.round(W * 0.56), y = Math.round(H * 0.18);
+    renderer.setRenderTarget(null);
+    renderer.autoClear = false;
+    renderer.clearDepth();
+    renderer.setViewport(x, y, w, h); renderer.setScissor(x, y, w, h); renderer.setScissorTest(true);
+    previewCam.aspect = w / h; previewCam.updateProjectionMatrix();
+    renderer.render(previewScene, previewCam);
+    renderer.setScissorTest(false); renderer.setViewport(0, 0, W, H);
+    renderer.autoClear = true;
+  }
 }
 
 function drawLoading() {
@@ -451,6 +546,7 @@ function drawHUD() {
 
   if (game.race && (game.state === 'race' || (game.state === 'menu' && game.menu.overlay))) {
     drawRaceHUD(ctx, game.race, HW, HH, blink);
+    if (renderStyle.modern && game.race.flash > 0) { ctx.fillStyle = `rgba(255,70,40,${game.race.flash * 0.4})`; ctx.fillRect(0, 0, HW, HH); }
   }
 
   if (game.state === 'menu') drawMenu(ctx, game.menu, HW, HH, S);
@@ -577,6 +673,11 @@ function drawStandings(ctx, HW, HH, S) {
 }
 
 // ---- Boot --------------------------------------------------------------------
-startAttract();
+if (params.has('track')) {
+  // testing aid: ?track=N jumps straight into a race on circuit N
+  game.track = Math.max(0, Math.min(TRACKS.length - 1, Number(params.get('track')) || 0));
+  game.team = Number(params.get('team')) || 0;
+  startRace();
+} else startAttract();
 requestAnimationFrame(frame);
 window.__game = game;

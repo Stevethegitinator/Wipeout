@@ -2,7 +2,7 @@
 // gantries, supports, terrain, sky and themed scenery.
 import * as THREE from '../vendor/three.module.min.js';
 import { MeshBuilder } from './builder.js';
-import { psxMaterial } from './psx.js';
+import { psxMaterial, renderStyle } from './psx.js';
 import { THEMES } from './data.js';
 import { LANES } from './trackdata.js';
 import * as TX from './textures.js';
@@ -59,8 +59,8 @@ export function buildWorld(track) {
     }
   }
   const side = THREE.DoubleSide;
-  group.add(roadIn.build(psxMaterial({ map: TX.roadTexture(false, theme.accent), vertexColors: true, side })));
-  group.add(roadEdge.build(psxMaterial({ map: TX.roadTexture(true, theme.accent), vertexColors: true, side })));
+  group.add(roadIn.build(psxMaterial({ map: TX.roadTexture(false, theme.accent), vertexColors: true, side, rough: 0.55 })));
+  group.add(roadEdge.build(psxMaterial({ map: TX.roadTexture(true, theme.accent), vertexColors: true, side, rough: 0.55 })));
   group.add(under.build(psxMaterial({ map: TX.underTexture(), vertexColors: true, side })));
 
   // ---- Barriers and tunnels ----------------------------------------------
@@ -98,7 +98,7 @@ export function buildWorld(track) {
       roof.quad(v(i, -wi, 8), v(j, -wj, 8), v(j, wj, 12), v(i, wi, 12), [0, 0, 1, 0, 1, 1, 0, 1], [0.6, 0.6, 0.8, 0.8]);
     }
   }
-  group.add(wall.build(psxMaterial({ map: TX.wallTexture(theme.accent, theme.accent2), vertexColors: true, side })));
+  group.add(wall.build(psxMaterial({ map: TX.wallTexture(theme.accent, theme.accent2), vertexColors: true, side, rough: 0.5, metal: 0.3 })));
   if (!roof.empty) group.add(roof.build(psxMaterial({ map: TX.roofTexture(night), vertexColors: true, side })));
 
   // ---- Speed and weapon pads ---------------------------------------------
@@ -114,8 +114,33 @@ export function buildWorld(track) {
       bld.quad(v(i, l0, 0.06), v(i, l1, 0.06), v(j, m1, 0.06), v(j, m0, 0.06), [0, 1 - va, 1, 1 - va, 1, 1 - vb, 0, 1 - vb]);
     }
   }
-  if (!padSpeed.empty) group.add(padSpeed.build(psxMaterial({ map: TX.speedPadTexture(), vertexColors: true, side, affine: false })));
-  if (!padWeapon.empty) group.add(padWeapon.build(psxMaterial({ map: TX.weaponPadTexture(), vertexColors: true, side, affine: false })));
+  if (!padSpeed.empty) group.add(padSpeed.build(psxMaterial({ map: TX.speedPadTexture(), vertexColors: true, side, affine: false, glow: 1.6 })));
+  if (!padWeapon.empty) group.add(padWeapon.build(psxMaterial({ map: TX.weaponPadTexture(), vertexColors: true, side, affine: false, glow: 1.6 })));
+
+  // ---- Guide lights: glowing edge strips and corner chevrons ------------------
+  const strip = new MeshBuilder(), chev = new MeshBuilder();
+  for (let i = 0; i < N; i++) {
+    const j = track.wrap(i + 1);
+    for (const s of [-1, 1]) {
+      const a0 = s * (track.width[i] / 2 - 0.1), a1 = s * (track.width[i] / 2 - 0.5);
+      const b0 = s * (track.width[j] / 2 - 0.1), b1 = s * (track.width[j] / 2 - 0.5);
+      strip.quad(v(i, a1, 0.05), v(i, a0, 0.05), v(j, b0, 0.05), v(j, b1, 0.05));
+      if (!track.tunnel[i]) {
+        const o0 = s * (track.width[i] / 2 + 0.05), o1 = s * (track.width[j] / 2 + 0.05);
+        strip.quad(v(i, o0, WALL_H - 0.25), v(j, o1, WALL_H - 0.25), v(j, o1, WALL_H - 0.05), v(i, o0, WALL_H - 0.05));
+      }
+    }
+  }
+  for (let i = 0; i < N; i += 5) {
+    const k = track.curvature[i];
+    if (Math.abs(k) < 0.0055) continue;
+    const s = k > 0 ? 1 : -1; // board on the outside wall of the corner
+    const j = track.wrap(i + 1);
+    const li = s * (track.width[i] / 2 - 0.08), lj = s * (track.width[j] / 2 - 0.08);
+    chev.quad(v(i, li, 0.3), v(j, lj, 0.3), v(j, lj, WALL_H - 0.35), v(i, li, WALL_H - 0.35), [0, 0, 1, 0, 1, 1, 0, 1]);
+  }
+  group.add(strip.build(psxMaterial({ color: new THREE.Color(night ? theme.accent2 : theme.accent), side, glow: night ? 2.2 : 1.2 })));
+  if (!chev.empty) group.add(chev.build(psxMaterial({ map: TX.chevronTexture('#ffd020'), side, affine: false, glow: 1.4 })));
 
   // ---- Structures: gantries, lamps, supports ------------------------------
   const steel = new MeshBuilder();
@@ -144,7 +169,7 @@ export function buildWorld(track) {
       if (off < 0) bld.quad(a, b, c, d, [0, 0, 1, 0, 1, 1, 0, 1]);
       else bld.quad(b, a, d, c, [0, 0, 1, 0, 1, 1, 0, 1]);
     }
-    banners.push(bld.build(psxMaterial({ map: texture, side, affine: false })));
+    banners.push(bld.build(psxMaterial({ map: texture, side, affine: false, glow: 0.7 })));
   };
   gantry(0, TX.bannerTexture('START', '#ffffff', '#101014'));
   gantry(-40, TX.bannerTexture(def.name, theme.accent, '#101014'));
@@ -172,7 +197,7 @@ export function buildWorld(track) {
     if (hgt < 4) continue;
     place(i, 0, -1.5 - hgt / 2, 4, hgt, 3, 0.5);
   }
-  group.add(steel.build(psxMaterial({ vertexColors: true, lit: true, color: 0x9aa0aa }), true));
+  group.add(steel.build(psxMaterial({ vertexColors: true, lit: true, color: 0x9aa0aa, rough: 0.4, metal: 0.6 }), true));
 
   // Glow sprites for lamps and barrier lights.
   const glowTex = TX.glowTexture();
@@ -181,14 +206,15 @@ export function buildWorld(track) {
     const m = new THREE.PointsMaterial({ map: glowTex, color, size, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false });
     group.add(new THREE.Points(g, m));
   };
-  addPoints(glows, night ? 0xfff0c0 : 0xffffff, night ? 9 : 4);
+  const gk = renderStyle.modern ? 0.45 : 1;
+  addPoints(glows, night ? 0xfff0c0 : 0xffffff, (night ? 9 : 4) * gk);
   if (night) {
     const edge = [];
     for (let i = 0; i < N; i += 3) {
       if (track.tunnel[i]) continue;
       for (const s of [-1, 1]) edge.push(track.pointAt(i, s * (track.width[i] / 2 + 0.4), WALL_H + 0.5));
     }
-    addPoints(edge, new THREE.Color(theme.accent2), 2.2);
+    addPoints(edge, new THREE.Color(theme.accent2), 2.2 * gk);
   }
 
   // ---- Terrain -----------------------------------------------------------
@@ -386,5 +412,5 @@ function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx
     }
   }
   if (!lit.empty) group.add(lit.build(psxMaterial({ vertexColors: true, lit: true, side: THREE.DoubleSide }), true));
-  if (!win.empty) group.add(win.build(psxMaterial({ map: TX.windowTexture(night), vertexColors: true })));
+  if (!win.empty) group.add(win.build(psxMaterial({ map: TX.windowTexture(night), vertexColors: true, glow: night ? 0.9 : 0, rough: 0.3, metal: 0.4 })));
 }

@@ -35,9 +35,9 @@ export class Weapons {
     this.items = [];
     this.group = new THREE.Group();
     this.mats = {
-      rocket: psxMaterial({ color: 0xff7a2a }),
-      missile: psxMaterial({ color: 0xffe04a }),
-      mine: psxMaterial({ color: 0xff2a6a }),
+      rocket: psxMaterial({ color: 0xff7a2a, glow: 1.5 }),
+      missile: psxMaterial({ color: 0xffe04a, glow: 1.5 }),
+      mine: psxMaterial({ color: 0xff2a6a, glow: 1.5 }),
       bolt: psxMaterial({ color: 0xb09aff, additive: true }),
       shock: psxMaterial({ color: 0x2ad0ff, additive: true, side: THREE.DoubleSide }),
     };

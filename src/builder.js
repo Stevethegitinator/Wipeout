@@ -44,10 +44,11 @@ export class MeshBuilder {
     g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
     g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
     g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
-    if (computeNormals) g.computeVertexNormals();
+    if (computeNormals || !material.isShaderMaterial) g.computeVertexNormals();
     g.computeBoundingSphere();
     const m = new THREE.Mesh(g, material);
     m.matrixAutoUpdate = false;
+    m.receiveShadow = !material.isShaderMaterial && !material.isMeshBasicMaterial;
     return m;
   }
 }

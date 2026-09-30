@@ -8,7 +8,8 @@ import { AIPilot } from './ai.js';
 import { Weapons, rollWeapon } from './weapons.js';
 import { Particles } from './particles.js';
 import { buildShipModel } from './shipmodels.js';
-import { psxMaterial, psxUniforms } from './psx.js';
+import { psxMaterial, psxUniforms, renderStyle, setOpacity } from './psx.js';
+import { glowTexture } from './textures.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -26,7 +27,7 @@ function getTrack(def) {
 
 export class Race {
   constructor(opts) {
-    const { scene, camera, audio, trackDef, classIndex = 0, mode = 'race', playerTeam = 0, playerPilot = 0, laps = 3, grid = null, autopilot = false } = opts;
+    const { scene, camera, audio, trackDef, classIndex = 0, mode = 'race', playerTeam = 0, playerPilot = 0, laps = 3, grid = null, autopilot = false, renderer = null } = opts;
     this.scene = scene;
     this.camera = camera;
     this.audio = audio;
@@ -53,6 +54,9 @@ export class Race {
     psxUniforms.uFogNear.value = this.theme.fogNear;
     psxUniforms.uFogFar.value = this.theme.fogFar;
     scene.background = new THREE.Color(this.theme.fog);
+    if (renderStyle.modern) this.setupLighting(renderer);
+    else scene.fog = null;
+    this.glowTex = glowTexture();
 
     // Entrants: every pilot of every team. Grid order may be given (championship).
     const entrants = [];
@@ -106,6 +110,33 @@ export class Race {
     this.snapCamera();
   }
 
+  // Modern mode: sun with soft shadows, sky light and reflections from the sky.
+  setupLighting(renderer) {
+    const th = this.theme, night = th.night;
+    this.scene.fog = new THREE.Fog(th.fog, th.fogNear * 1.8, th.fogFar * 2.4);
+    const hemi = new THREE.HemisphereLight(th.sky[1], th.mountains, night ? 1.1 : 1.3);
+    this.root.add(hemi);
+    const sun = new THREE.DirectionalLight(night ? 0xa8c0ff : 0xfff0d8, night ? 1.0 : 2.6);
+    sun.castShadow = true;
+    sun.shadow.mapSize.set(2048, 2048);
+    const sc = sun.shadow.camera;
+    sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70; sc.near = 1; sc.far = 500;
+    sun.shadow.bias = -0.0004;
+    sun.shadow.normalBias = 0.3;
+    this.root.add(sun, sun.target);
+    this.sun = sun;
+    this.sunDir = new THREE.Vector3(0.45, 1, 0.3).normalize();
+    if (renderer) {
+      const pm = new THREE.PMREMGenerator(renderer);
+      const envScene = new THREE.Scene();
+      envScene.add(this.skyGroup.clone());
+      this.envRT = pm.fromScene(envScene, 0.02, 1, 10000);
+      pm.dispose();
+      this.scene.environment = this.envRT.texture;
+      this.scene.environmentIntensity = night ? 0.6 : 1.0;
+    }
+  }
+
   attachVisual(ship) {
     const { mesh, engines } = buildShipModel(ship.team);
     const g = new THREE.Group();
@@ -116,6 +147,12 @@ export class Race {
     shield.visible = false;
     g.add(shield);
     ship.shieldMesh = shield;
+    ship.glows = engines.map((e) => {
+      const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: this.glowTex, color: 0xff9a40, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+      sp.position.copy(e).z += 0.15;
+      g.add(sp);
+      return sp;
+    });
     const sh = new THREE.Mesh(new THREE.PlaneGeometry(3.6, 4.8).rotateX(-Math.PI / 2), psxMaterial({ color: 0x000000, transparent: true, alpha: 0.45 }));
     sh.matrixAutoUpdate = false;
     this.root.add(sh);
@@ -127,6 +164,8 @@ export class Race {
 
   dispose() {
     this.scene.remove(this.root);
+    this.scene.environment = null;
+    if (this.envRT) this.envRT.dispose();
     this.audio.stopEngines();
     this.root.traverse((o) => {
       if (o.geometry && o.geometry.dispose) o.geometry.dispose();
@@ -345,7 +384,7 @@ export class Race {
       // shadow on the track surface
       const f = s.frame;
       const sh = s.shadow;
-      if (f.h < 12 && f.h > -1) {
+      if (f.h < 12 && f.h > -1 && !renderStyle.modern) {
         sh.visible = true;
         _v.copy(s.pos).addScaledVector(f.U, -f.h + 0.1);
         _right.crossVectors(s.fwd, f.U).normalize();
@@ -353,12 +392,15 @@ export class Race {
         const sc = 1 + f.h * 0.05;
         _m.makeBasis(_right.multiplyScalar(sc), f.U, _back.multiplyScalar(sc)).setPosition(_v);
         sh.matrix.copy(_m);
-        sh.material.uniforms.uAlpha.value = Math.max(0, 0.5 - f.h * 0.04);
+        setOpacity(sh.material, Math.max(0, 0.5 - f.h * 0.04));
       } else sh.visible = false;
 
       // exhaust
       const thrusting = s.input.thrust && !s.finished ? 1 : 0.4;
       const col = s.boostTime > 0 ? 0x80e0ff : thrusting > 0.5 ? 0xff8a3a : 0x803010;
+      const gs = (s.boostTime > 0 ? 1.1 : 0.4 + thrusting * 0.3) * (0.9 + Math.random() * 0.2);
+      for (const sp of s.glows) { sp.scale.setScalar(gs); sp.material.color.setHex(s.boostTime > 0 ? 0x60d0ff : 0xff9040); }
+      if (renderStyle.modern && Math.random() < 0.5) continue; // glow sprites carry most of the exhaust look
       for (const e of s.engines) {
         _v.copy(e).applyQuaternion(s.visual.quaternion).add(s.visual.position);
         _w.copy(s.vel).multiplyScalar(0.85).addScaledVector(s.fwd, -8);
@@ -409,6 +451,7 @@ export class Race {
         cam.lookAt(s.pos);
         cam.fov = 50; cam.updateProjectionMatrix();
         this.skyGroup.position.copy(cam.position);
+        this.followSun(s.pos);
         if (s.pos.distanceTo(a.pos) > 400 && a.timer < 4) a.timer = 0;
         return;
       }
@@ -422,7 +465,8 @@ export class Race {
       desired = _v.copy(s.fwd).multiplyScalar(0.6).addScaledVector(s.up, 1.0);
       this.camOffset.copy(desired);
     } else {
-      desired = _v.copy(s.fwd).multiplyScalar(-(8.5 + spd * 0.012)).addScaledVector(s.up, 2.6 + spd * 0.004);
+      const modern = renderStyle.modern;
+      desired = _v.copy(s.fwd).multiplyScalar(-((modern ? 9.5 : 8.5) + spd * 0.012)).addScaledVector(s.up, (modern ? 3.1 : 2.6) + spd * 0.004);
       this.camOffset.lerp(desired, 1 - Math.exp(-dt * 9));
     }
     cam.position.copy(s.pos).add(this.camOffset);
@@ -432,15 +476,26 @@ export class Race {
     cam.up.copy(this.camUp).addScaledVector(_right, s.roll * (inside ? 0.25 : 0.12)).normalize();
     const look = _w.copy(s.pos).addScaledVector(s.fwd, 10).addScaledVector(s.up, inside ? 0.9 : 0.8);
     this.camShake = Math.max(0, this.camShake - dt * 2.5);
-    const shk = (this.camShake + s.shake * 0.3) * 0.6;
+    const shk = (this.camShake + s.shake * 0.3) * (renderStyle.modern ? 0.3 : 0.6);
     if (shk > 0) cam.position.add(_right.set((Math.random() - 0.5) * shk, (Math.random() - 0.5) * shk, (Math.random() - 0.5) * shk));
     cam.lookAt(look);
-    const fov = (inside ? 78 : 70) + Math.min(22, spd * 0.075) + (s.boostTime > 0 ? 6 : 0);
+    const fov = renderStyle.modern
+      ? (inside ? 75 : 66) + Math.min(14, spd * 0.06) + (s.boostTime > 0 ? 4 : 0)
+      : (inside ? 78 : 70) + Math.min(22, spd * 0.075) + (s.boostTime > 0 ? 6 : 0);
     cam.fov += (fov - cam.fov) * Math.min(1, dt * 4);
     cam.updateProjectionMatrix();
     s.visual.visible = !inside;
     for (const o of this.ships) if (o !== s) o.visual.visible = true;
     this.skyGroup.position.copy(cam.position);
+    this.followSun(s.pos);
+  }
+
+  // Keep the shadow-casting sun centred on the action.
+  followSun(target) {
+    if (!this.sun) return;
+    this.sun.position.copy(target).addScaledVector(this.sunDir, 200);
+    this.sun.target.position.copy(target);
+    this.sun.target.updateMatrixWorld();
   }
 
   results() {

@@ -1,29 +1,39 @@
 // Procedurally painted low-resolution textures (no external image assets).
 import * as THREE from '../vendor/three.module.min.js';
+import { renderStyle } from './psx.js';
 
 function makeRng(seed) {
   let s = seed >>> 0 || 1;
   return () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
 }
 
+// Modern mode paints the same designs at 8x resolution for crisp detail.
 function canvas(w, h) {
+  const k = renderStyle.modern ? 8 : 1;
   const c = document.createElement('canvas');
-  c.width = w; c.height = h;
-  return [c, c.getContext('2d')];
+  c.width = w * k; c.height = h * k;
+  const ctx = c.getContext('2d');
+  ctx.scale(k, k);
+  return [c, ctx];
 }
 
 function toTexture(c, repeat = true) {
   const t = new THREE.CanvasTexture(c);
-  t.magFilter = THREE.NearestFilter;
-  t.minFilter = THREE.NearestFilter;
-  t.generateMipmaps = false;
+  if (renderStyle.modern) {
+    t.anisotropy = 8;
+  } else {
+    t.magFilter = THREE.NearestFilter;
+    t.minFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+  }
   t.colorSpace = THREE.SRGBColorSpace;
   if (repeat) t.wrapS = t.wrapT = THREE.RepeatWrapping;
   return t;
 }
 
 function noise(ctx, w, h, amount, rng, alpha = 1) {
-  const img = ctx.getImageData(0, 0, w, h);
+  if (renderStyle.modern) amount *= 0.5;
+  const img = ctx.getImageData(0, 0, ctx.canvas.width, ctx.canvas.height);
   for (let i = 0; i < img.data.length; i += 4) {
     const n = (rng() - 0.5) * amount;
     img.data[i] += n; img.data[i + 1] += n; img.data[i + 2] += n;
@@ -189,5 +199,17 @@ export function glowTexture() {
   g.addColorStop(0.3, 'rgba(255,255,255,0.6)');
   g.addColorStop(1, 'rgba(255,255,255,0)');
   x.fillStyle = g; x.fillRect(0, 0, 32, 32);
+  return toTexture(c, false);
+}
+
+export function chevronTexture(color) {
+  const [c, x] = canvas(64, 32);
+  x.fillStyle = '#101014'; x.fillRect(0, 0, 64, 32);
+  x.fillStyle = color;
+  for (let i = 0; i < 3; i++) {
+    const o = 6 + i * 19;
+    x.beginPath(); x.moveTo(o, 4); x.lineTo(o + 10, 16); x.lineTo(o, 28); x.lineTo(o + 6, 28); x.lineTo(o + 16, 16); x.lineTo(o + 6, 4); x.fill();
+  }
+  x.fillRect(0, 0, 64, 2); x.fillRect(0, 30, 64, 2);
   return toTexture(c, false);
 }

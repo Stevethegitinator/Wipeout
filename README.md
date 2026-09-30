@@ -45,9 +45,13 @@ airbrake to swing the nose round tight corners.
   the target's systems), shield and turbo.
 - **AI rivals** that follow a racing line, dodge each other and use
   weapons.
-- **PS1-style rendering:** 240p output, vertex snapping (wobble), affine
-  texture warping, Gouraud vertex lighting, depth-cue fog and 15-bit colour
-  with ordered dithering. Each effect can be switched off in Options.
+- **Modern graphics (default):** full-resolution anti-aliased rendering,
+  sun lighting with real-time shadows, sky reflections on the craft, bloom
+  on glowing elements and filmic tone mapping. Glowing edge strips and
+  yellow chevron boards on corners make the track easy to read at speed.
+  Quality scales down automatically if the frame rate drops.
+- **Retro 32-bit mode** (Options → Graphics): 240p output, vertex wobble,
+  affine texture warping, vertex lighting and 15-bit colour dithering.
 - **Procedural audio:** synthesised engines and effects, plus a generated
   electronic soundtrack with a different track for each circuit.
 
@@ -57,7 +61,8 @@ airbrake to swing the nose round tight corners.
   completes three laps of every circuit. This checks the track geometry,
   physics and AI together.
 - Open `index.html?autopilot&laps=1` to have the AI fly your craft, which
-  is handy for testing menus and results flow.
+  is handy for testing menus and results flow. Add `track=N` (0–3) to jump
+  straight into a race.
 
 ```
 src/

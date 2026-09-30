@@ -79,7 +79,38 @@ void main() {
   gl_FragColor = c;
 }`;
 
+// Global graphics style. Modern: lit PBR materials, full resolution, bloom.
+// Retro: the PlayStation-style shader below.
+export const renderStyle = { modern: true };
+
+export function setOpacity(mat, a) {
+  if (mat.uniforms && mat.uniforms.uAlpha) mat.uniforms.uAlpha.value = a;
+  else mat.opacity = a;
+}
+
+function modernMaterial(opts) {
+  const {
+    map = null, color = 0xffffff, vertexColors = false, additive = false, transparent = false,
+    alpha = 1, side = THREE.FrontSide, fog = true, depthWrite, glow = 0, rough = 0.72, metal = 0.08,
+  } = opts;
+  if (additive || transparent || !fog) {
+    return new THREE.MeshBasicMaterial({
+      map, color, vertexColors, side, fog: fog && !additive, opacity: alpha,
+      transparent: transparent || additive, blending: additive ? THREE.AdditiveBlending : THREE.NormalBlending,
+      depthWrite: depthWrite ?? !(transparent || additive), toneMapped: !additive,
+    });
+  }
+  const m = new THREE.MeshStandardMaterial({ map, color, vertexColors, side, roughness: rough, metalness: metal });
+  if (glow) {
+    m.emissive = new THREE.Color(map ? 0xffffff : color);
+    m.emissiveMap = map;
+    m.emissiveIntensity = glow;
+  }
+  return m;
+}
+
 export function psxMaterial(opts = {}) {
+  if (renderStyle.modern) return modernMaterial(opts);
   const {
     map = null, color = 0xffffff, vertexColors = false, lit = false, additive = false,
     transparent = false, alpha = 1, side = THREE.FrontSide, fog = true, emissive = 0,

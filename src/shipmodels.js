@@ -144,7 +144,8 @@ export function buildShipModel(team) {
     engines = [V(0, 0.1, 1.75), V(-1.5, 0, 1.85), V(1.5, 0, 1.85)];
   }
 
-  const mesh = b.build(psxMaterial({ vertexColors: true, lit: true, side: THREE.DoubleSide }), true);
+  const mesh = b.build(psxMaterial({ vertexColors: true, lit: true, side: THREE.DoubleSide, rough: 0.32, metal: 0.45 }), true);
+  mesh.castShadow = true;
   mesh.matrixAutoUpdate = true;
   return { mesh, engines };
 }
