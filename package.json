@@ -1,0 +1,12 @@
+{
+  "name": "hoverline",
+  "version": "1.0.0",
+  "description": "An original PS1-style anti-gravity racing game for the browser",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "node tools/serve.js",
+    "test": "node tools/simtest.js"
+  },
+  "license": "MIT"
+}
