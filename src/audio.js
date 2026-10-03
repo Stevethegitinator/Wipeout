@@ -4,6 +4,8 @@
 import { Music, makeImpulse } from './music.js';
 
 const mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+// exponentialRamp* throws on 0, so every envelope peak goes through this.
+const amp = (g) => Math.max(1e-4, g);
 
 // Per-team engine character: base pitch and how much turbine whine vs. roar.
 const ENGINE_VOICE = {
@@ -29,7 +31,8 @@ export class Audio {
     if (this.ctx) { if (this.ctx.state === 'suspended' && !offline) this.ctx.resume(); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC && !offline) return;
-    const ctx = this.ctx = offline || new AC();
+    // 'balanced' trades a few ms of latency for far fewer crackles under load
+    const ctx = this.ctx = offline || new AC({ latencyHint: 'balanced' });
     this.master = ctx.createGain(); this.master.gain.value = 0.9;
     const comp = ctx.createDynamicsCompressor();
     comp.threshold.value = -14; comp.knee.value = 10; comp.ratio.value = 4; comp.attack.value = 0.004; comp.release.value = 0.2;
@@ -43,7 +46,7 @@ export class Audio {
     for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
     // Effects reverb for explosions and impacts.
     this.verb = ctx.createConvolver();
-    this.verb.buffer = makeImpulse(ctx, 1.8, 2.5);
+    this.verb.buffer = makeImpulse(ctx, 1.3, 2.5);
     this.verbSend = ctx.createGain(); this.verbSend.gain.value = 0.5;
     this.verbSend.connect(this.verb).connect(this.sfx);
     this.distCurve = (() => {
@@ -92,7 +95,7 @@ export class Audio {
     const f = c.createBiquadFilter(); f.type = type; f.Q.value = q;
     f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
     const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(amp(gain), t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(f).connect(g).connect(dest);
     src.start(t, Math.random() * 1.5); src.stop(t + dur + 0.05);
   }
@@ -102,7 +105,7 @@ export class Audio {
     const o = c.createOscillator(); o.type = type;
     o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f1), t + dur);
     const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(amp(gain), t + attack); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g).connect(dest); o.start(t); o.stop(t + dur + 0.05);
     return o;
   }
@@ -118,7 +121,7 @@ export class Audio {
     mg.gain.setValueAtTime(f0 * index, t); mg.gain.exponentialRampToValueAtTime(Math.max(1, f1 * index * 0.3), t + dur);
     mod.connect(mg).connect(car.frequency);
     const g = c.createGain();
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(gain, t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(amp(gain), t + 0.004); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     car.connect(g).connect(dest);
     car.start(t); mod.start(t); car.stop(t + dur + 0.05); mod.stop(t + dur + 0.05);
   }
@@ -132,7 +135,7 @@ export class Audio {
 
   // ---- one-shot effects ---------------------------------------------------
   play(name, vol = 1, pos = null) {
-    if (!this.ctx) return;
+    if (!this.ctx || !(vol > 0.01)) return; // inaudible (or NaN): skip entirely
     const c = this.ctx, t = c.currentTime, v = vol;
     const pan = this.panFor(pos);
     const o = (verb = 0) => this.out(pan, verb);
@@ -280,6 +283,7 @@ export class Audio {
     const ctx = this.ctx; if (!ctx) return;
     let e = this.engines.get(id);
     if (!e) e = this.makeEngine(id, ENGINE_VOICE[teamId] || ENGINE_VOICE.kestrel);
+    e.voice = ENGINE_VOICE[teamId] || ENGINE_VOICE.kestrel; // pooled voices take on whichever craft they follow
     const t = ctx.currentTime;
     // Doppler from relative radial velocity (scaled so it's audible but not silly).
     let dop = 1;
@@ -374,6 +378,7 @@ export class Audio {
       this.grindNode = { n, res, g, crackle, was: 0 };
     }
     const gn = this.grindNode, t = ctx.currentTime;
+    if (level === 0 && gn.was === 0) return; // idle: nothing to update
     if (level > 0 && gn.was === 0) this.clang(this.out(0, 0.3), t, 420 + Math.random() * 80, 0.15 * level, 0.6); // first contact
     gn.was = level;
     gn.g.gain.setTargetAtTime(level * 0.16, t, level > 0 ? 0.015 : 0.06);
@@ -392,7 +397,8 @@ export class Audio {
     const g = this.musicBus.gain, t = this.ctx.currentTime;
     g.cancelScheduledValues(t); g.setValueAtTime(0.0001, t); g.linearRampToValueAtTime(this.musicVol * 0.6, t + 1.2);
     this.music.start(cfg, t + 0.15);
-    this.musicTimer = setInterval(() => this.music.schedule(this.ctx.currentTime + 0.2), 30);
+    // Schedule well ahead so a busy frame (e.g. loading a circuit) can't starve the music.
+    this.musicTimer = setInterval(() => this.music.schedule(this.ctx.currentTime + 0.4), 40);
   }
 
   stopMusic() {

@@ -559,7 +559,17 @@ function frame(now) {
   const paused = game.state === 'menu' && game.menu.overlay || game.state === 'loading';
   if (r && !paused) {
     const raceInput = game.state === 'race' ? inp : {};
-    r.update(dt, raceInput);
+    try {
+      try {
+      r.update(dt, raceInput);
+    } catch (err) {
+      // Never let one faulty effect stall the frame loop; report it once.
+      if (!frame.reported) { console.error(err); frame.reported = true; }
+    }
+    } catch (err) {
+      // Never let one faulty effect stall the frame loop; report it once.
+      if (!frame.reported) { console.error(err); frame.reported = true; }
+    }
   }
   render();
 }

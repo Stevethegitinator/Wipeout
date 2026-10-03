@@ -605,15 +605,24 @@ export class Race {
     this.listenPrev.copy(this.camera.position);
     this.listenRight = (this.listenRight || new THREE.Vector3()).set(1, 0, 0).applyQuaternion(this.camera.quaternion);
     this.audio.setListener(this.camera.position, this.listenRight, this.listenVel);
-    // Engine audio: player loud, rivals by distance.
-    for (const s of this.ships) {
-      let vol;
-      if (s === this.player) vol = 1;
-      else {
-        const d = s.pos.distanceTo(this.camera.position);
-        vol = Math.max(0, 1 - d / 150) * (this.mode === 'attract' ? 0.35 : 0.45);
-      }
-      this.audio.engine(s.id, s.team.id, s.speed, s.input.thrust || 0, s.boostTime > 0, vol, s.pos, s.vel);
+    // Engine audio at 30 updates a second: the player plus a fixed pool of
+    // three voices handed to the nearest rivals, so the audio load stays constant.
+    this.audioClock = (this.audioClock || 0) + dt;
+    if (this.audioClock < 1 / 30) return;
+    this.audioClock = 0;
+    const cam = this.camera.position;
+    if (this.player) {
+      const p = this.player;
+      this.audio.engine('p', p.team.id, p.speed, p.input.thrust || 0, p.boostTime > 0, 1, p.pos, p.vel);
+    }
+    const rivals = this.ships.filter((s) => s !== this.player);
+    for (const s of rivals) s.camDist = s.pos.distanceToSquared(cam);
+    rivals.sort((a, b) => a.camDist - b.camDist);
+    const scale = this.mode === 'attract' ? 0.35 : 0.45;
+    for (let k = 0; k < 3; k++) {
+      const s = rivals[k];
+      const vol = s ? Math.max(0, 1 - Math.sqrt(s.camDist) / 150) * scale : 0;
+      if (s) this.audio.engine('r' + k, s.team.id, s.speed, s.input.thrust || 0, s.boostTime > 0, vol, s.pos, s.vel);
     }
   }
 
@@ -735,11 +744,15 @@ export class Race {
     }
     if (this.lampLights.length) {
       const s = this.player || (this.attract && this.attract.target) || this.ships[0];
-      const near = w.lamps
-        .map((p) => ({ p, d: p.distanceToSquared(s.pos) - p.clone().sub(s.pos).dot(s.fwd) * 30 }))
-        .sort((a, b) => a.d - b.d);
+      // nearest lamps, favouring those ahead; no per-frame allocations
+      const scores = this.lampScores || (this.lampScores = w.lamps.map((p) => ({ p, d: 0 })));
+      for (const n of scores) {
+        const dx = n.p.x - s.pos.x, dy = n.p.y - s.pos.y, dz = n.p.z - s.pos.z;
+        n.d = dx * dx + dy * dy + dz * dz - (dx * s.fwd.x + dy * s.fwd.y + dz * s.fwd.z) * 30;
+      }
+      scores.sort((a, b) => a.d - b.d);
       this.lampLights.forEach((l, k) => {
-        const n = near[k];
+        const n = scores[k];
         if (!n) { l.intensity = 0; return; }
         l.position.copy(n.p);
         l.intensity = 320;

@@ -84,7 +84,7 @@ export class Music {
     this.delaySend.connect(this.delay);
     const dout = ctx.createGain(); dout.gain.value = 0.5; dlp.connect(dout).connect(this.out);
     this.reverb = ctx.createConvolver();
-    this.reverb.buffer = makeImpulse(ctx, 2.6, 2.2);
+    this.reverb.buffer = makeImpulse(ctx, 1.9, 2.2);
     this.reverbSend = ctx.createGain();
     const rout = ctx.createGain(); rout.gain.value = 0.55;
     this.reverbSend.connect(this.reverb).connect(rout).connect(this.out);
@@ -198,7 +198,7 @@ export class Music {
   // ---- instruments ------------------------------------------------------
   env(g, t, a, peak, d) {
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(peak, t + a);
+    g.gain.exponentialRampToValueAtTime(Math.max(1e-4, peak), t + a);
     g.gain.exponentialRampToValueAtTime(0.0001, t + a + d);
   }
 
@@ -310,7 +310,7 @@ export class Music {
     const g = c.createGain();
     g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.09, t + 0.8);
     g.gain.setValueAtTime(0.09, t + dur * 0.8); g.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.6);
-    for (const n of chord) for (const det of [-9, 0, 9]) {
+    for (const n of chord) for (const det of [-8, 8]) {
       const o = c.createOscillator(); o.type = 'sawtooth'; o.frequency.value = mtof(root + n); o.detune.value = det + (Math.random() - 0.5) * 4;
       o.connect(f); o.start(t); o.stop(t + dur + 0.7);
     }
