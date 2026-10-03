@@ -5,6 +5,10 @@ anti-gravity racers. The ships, teams, circuits, music, logos and sponsors
 are all new, created for this project. None of it is copied from any
 commercial game.
 
+> **Also in this repository:** [OVER CREST — Rally Championship](rally/README.md),
+> a rally game with a pace-note-calling co-driver, drift physics and a
+> modelled engine. Run `npm start` and open http://localhost:8080/rally/.
+
 ## Play
 
 ```sh

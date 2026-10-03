@@ -6,7 +6,8 @@
   "private": true,
   "scripts": {
     "start": "node tools/serve.js",
-    "test": "node tools/simtest.js"
+    "test": "node tools/simtest.js",
+    "test:rally": "node rally/tools/simtest.js"
   },
   "license": "MIT"
 }

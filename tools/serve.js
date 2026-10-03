@@ -9,7 +9,9 @@ const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/cs
 const port = Number(process.env.PORT) || 8080;
 
 createServer(async (req, res) => {
-  const path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^([/\\])+/, '');
+  let path = normalize(decodeURIComponent(new URL(req.url, 'http://x').pathname)).replace(/^([/\\])+/, '');
+  if (path === 'rally') { res.writeHead(301, { Location: '/rally/' }).end(); return; }
+  if (path.endsWith('/') || path.endsWith('\\')) path += 'index.html';
   if (path.startsWith('..')) { res.writeHead(403).end(); return; }
   try {
     const body = await readFile(join(root, path || 'index.html'));
@@ -18,4 +20,4 @@ createServer(async (req, res) => {
   } catch {
     res.writeHead(404).end('not found');
   }
-}).listen(port, () => console.log(`Hoverline running at http://localhost:${port}`));
+}).listen(port, () => console.log(`Hoverline at http://localhost:${port}  ·  Over Crest Rally at http://localhost:${port}/rally/`));
