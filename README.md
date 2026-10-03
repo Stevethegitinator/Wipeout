@@ -75,8 +75,18 @@ airbrake to swing the nose round tight corners.
   light and reflect on everything; see `assets/CREDITS.md`.
 - **Retro 32-bit mode** (Options → Graphics): 240p output, vertex wobble,
   affine texture warping, vertex lighting and 15-bit colour dithering.
-- **Procedural audio:** synthesised engines and effects, plus a generated
-  electronic soundtrack with a different track for each circuit.
+- **Audio, all synthesised in code:**
+  - Layered jet engines (turbine whine, combustion rumble, air roar and an
+    afterburner crackle on boost), with a different voice per team. Rivals
+    are placed in stereo and shift pitch as they pass (Doppler).
+  - Distinct sounds for all eleven weapons, impacts with metallic clangs,
+    explosions with debris crackle, and reverb.
+  - Rail grinding: a ringing metal scrape with spark crackle that follows
+    your speed, plus a clang on first contact.
+  - A soundtrack with a different style per circuit: breakbeat (Cobalt
+    Ridge), drum & bass (Neon Basin), acid techno (Sable Dunes) and dark
+    techno (Aurora Rift), plus menu music. Each track has an intro,
+    build-ups, drops and breakdowns, with kick-ducked bass and pads.
 
 ## Development
 

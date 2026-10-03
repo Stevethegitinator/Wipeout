@@ -48,7 +48,7 @@ export const TRACKS = [
     jumps: [[0.1, 6], [0.175, 0]],
     speedPads: [[0.06, 1], [0.06, 2], [0.3, 0], [0.55, 3], [0.8, 1], [0.8, 2]],
     weaponPads: [[0.14, 0], [0.14, 3], [0.36, 1], [0.36, 2], [0.62, 0], [0.62, 2], [0.88, 1], [0.88, 3]],
-    music: { seed: 11, bpm: 136, root: 45 },
+    music: { seed: 11, bpm: 136, root: 45, style: 'breaks' },
   },
   {
     id: 'neon', name: 'NEON BASIN', location: 'KAIHO MEGAPLEX', theme: 'city',
@@ -62,7 +62,7 @@ export const TRACKS = [
     jumps: [[0.075, 5]],
     speedPads: [[0.04, 1], [0.04, 2], [0.24, 3], [0.46, 0], [0.6, 1], [0.84, 2]],
     weaponPads: [[0.12, 0], [0.12, 3], [0.33, 1], [0.52, 2], [0.52, 3], [0.77, 0], [0.9, 1], [0.9, 2]],
-    music: { seed: 23, bpm: 142, root: 41 },
+    music: { seed: 23, bpm: 174, root: 41, style: 'dnb' },
   },
   {
     id: 'sable', name: 'SABLE DUNES', location: 'QASR AL-RIH', theme: 'desert',
@@ -76,7 +76,7 @@ export const TRACKS = [
     jumps: [[0.135, 0], [0.47, 7]],
     speedPads: [[0.05, 0], [0.05, 3], [0.2, 1], [0.4, 2], [0.66, 1], [0.66, 2], [0.86, 0]],
     weaponPads: [[0.1, 1], [0.1, 2], [0.28, 0], [0.28, 3], [0.5, 1], [0.74, 3], [0.92, 1], [0.92, 2]],
-    music: { seed: 37, bpm: 132, root: 43 },
+    music: { seed: 37, bpm: 132, root: 43, style: 'acid' },
   },
   {
     id: 'aurora', name: 'AURORA RIFT', location: 'SVALTA ICE SHELF', theme: 'arctic',
@@ -90,7 +90,7 @@ export const TRACKS = [
     jumps: [[0.075, 6]],
     speedPads: [[0.05, 1], [0.05, 2], [0.18, 3], [0.42, 0], [0.58, 2], [0.7, 1], [0.9, 3]],
     weaponPads: [[0.11, 0], [0.11, 3], [0.26, 1], [0.26, 2], [0.47, 3], [0.64, 0], [0.64, 1], [0.95, 2]],
-    music: { seed: 53, bpm: 146, root: 38 },
+    music: { seed: 53, bpm: 140, root: 38, style: 'dark' },
   },
 ];
 

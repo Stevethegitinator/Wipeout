@@ -3,7 +3,7 @@ import * as THREE from '../vendor/three.module.min.js';
 import { TEAMS, TRACKS, CLASSES, THEMES, POINTS } from './data.js';
 import { Race } from './race.js';
 import { Input } from './input.js';
-import { Audio } from './audio.js';
+import { Audio, MENU_MUSIC } from './audio.js';
 import { createPostPass, psxUniforms, renderStyle } from './psx.js';
 import { EffectComposer } from '../vendor/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from '../vendor/addons/postprocessing/RenderPass.js';
@@ -508,6 +508,9 @@ function frame(now) {
   game.t += dt;
   adaptQuality(dt);
   const inp = input.poll();
+  // Menu music whenever we're in the front-end (race music is started by startRace).
+  const inFrontEnd = game.state === 'title' || (game.state === 'menu' && !game.menu.overlay);
+  if (inFrontEnd && audio.ctx && !(audio.music && audio.music.playing && audio.currentMusic === MENU_MUSIC)) audio.startMusic(MENU_MUSIC);
   if (Object.values(inp).some((v) => v)) audio.init();
 
   switch (game.state) {

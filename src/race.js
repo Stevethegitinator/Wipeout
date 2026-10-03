@@ -296,7 +296,7 @@ export class Race {
       v *= Math.max(0, 1 - d / 350) * 0.7;
       if (this.mode === 'attract') v *= 0.6;
     }
-    if (v > 0.02) this.audio.play(name, v);
+    if (v > 0.02) this.audio.play(name, v, ship && ship !== this.player ? ship.pos : null);
   }
 
   message(text, dur = 1.6, color = '#ffffff') {
@@ -319,7 +319,7 @@ export class Race {
     if (kind !== 'shock' && kind !== 'bolt') this.fx.debris.burst(pos, 8, ship ? ship.vel : null);
     this.particles.burst(pos, 0xffffff, 12, 15, 2, 0.4);
     const d = pos.distanceTo(this.camera.position);
-    this.audio.play('explode', Math.max(0, 1 - d / 400));
+    this.audio.play('explode', Math.max(0, 1 - d / 400), ship === this.player ? null : pos);
     if (ship === this.player) this.flash = 0.5;
   }
 
@@ -596,7 +596,15 @@ export class Race {
         this.particles.emit(_v, _w, col, (s.boostTime > 0 ? 1.8 : 1.2) * (0.6 + thrusting * 0.5), 0.18, 2);
       }
     }
-    if (this.player) this.audio.grind(this.player.grinding ? Math.min(1, this.player.speed / 100) : 0);
+    if (this.player) this.audio.grind(this.player.grinding ? Math.min(1, 0.35 + this.player.speed / 140) : 0, this.player.speed);
+    // Listener follows the camera, for stereo position and Doppler.
+    this.listenVel = this.listenVel || new THREE.Vector3();
+    this.listenPrev = this.listenPrev || this.camera.position.clone();
+    this.listenVel.subVectors(this.camera.position, this.listenPrev).multiplyScalar(1 / Math.max(dt, 1e-3));
+    if (this.listenVel.lengthSq() > 250000) this.listenVel.set(0, 0, 0);
+    this.listenPrev.copy(this.camera.position);
+    this.listenRight = (this.listenRight || new THREE.Vector3()).set(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    this.audio.setListener(this.camera.position, this.listenRight, this.listenVel);
     // Engine audio: player loud, rivals by distance.
     for (const s of this.ships) {
       let vol;
@@ -605,7 +613,7 @@ export class Race {
         const d = s.pos.distanceTo(this.camera.position);
         vol = Math.max(0, 1 - d / 150) * (this.mode === 'attract' ? 0.35 : 0.45);
       }
-      this.audio.engine(s.id, s.speed, s.input.thrust || 0, vol);
+      this.audio.engine(s.id, s.team.id, s.speed, s.input.thrust || 0, s.boostTime > 0, vol, s.pos, s.vel);
     }
   }
 

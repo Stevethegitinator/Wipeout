@@ -125,7 +125,7 @@ export class Weapons {
         const target = this.targetAhead(ship, 600);
         const it = this.spawn('plasma', ship, nose, fwd.clone().multiplyScalar(speed + 130), { life: 3.5, radius: 3.2, target, turn: 1.2 });
         it.mesh.scale.setScalar(1.3);
-        race.sound('shock', ship);
+        race.sound('plasma', ship);
         break;
       }
       case 'emp': {
@@ -136,7 +136,7 @@ export class Weapons {
           if (o === ship || o.pos.distanceTo(ship.pos) > 45) continue;
           if (o.hit(0.35)) { o.stunTime = 2; race.onHit(ship, o, 'emp'); }
         }
-        race.sound('bolt', ship);
+        race.sound('emp', ship);
         race.flashAt(ship.pos, 0x60b0ff);
         break;
       }
@@ -144,7 +144,7 @@ export class Weapons {
         const p = ship.pos.clone().addScaledVector(ship.fwd, -5);
         const it = this.spawn('well', ship, p, new THREE.Vector3(), { life: 18, radius: 0, arm: 99 });
         it.static = true; it.field = 7.5; it.mesh.scale.setScalar(7.5);
-        race.sound('mine', ship);
+        race.sound('well', ship);
         break;
       }
       case 'turbo':
