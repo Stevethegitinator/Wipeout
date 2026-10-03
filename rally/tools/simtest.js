@@ -32,7 +32,7 @@ for (const st of stages) {
       if (car.s > lastProg + 5) { lastProg = car.s; lastProgT = t; }
       const lost = car.roadDist > 25 || car.upsideTime > 2 || t - lastProgT > 6 || !isFinite(car.pos.x);
       if (lost && process.env.V) console.log('   reset at', car.s.toFixed(0), 'dist', car.roadDist.toFixed(1), 'up', car.upsideTime.toFixed(1), 'stall', (t - lastProgT).toFixed(1), 'v', car.speed.toFixed(1), road.notes.filter((n) => Math.abs(n.s - car.s) < 60).map((n) => n.words.join(' ')).join(' | '));
-      if (lost) { resets++; car.place(Math.max(road.start, lastProg - 10)); lastProgT = t; if (resets > 30) break; }
+      if (lost) { resets++; lastProg = Math.max(road.start, lastProg - 10); car.place(lastProg); lastProgT = t; if (resets > 30) break; }
     }
     // Snow banks and muddy ditches catch even the AI now and then.
     const ok = car.s >= road.finish && resets <= (st.wet || st.surface === 'snow' ? 6 : 3);
