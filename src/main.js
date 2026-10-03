@@ -117,6 +117,7 @@ function rebuildPreview() {
 
 const settings = loadSettings();
 renderStyle.modern = settings.graphics !== 'retro';
+renderStyle.weather = settings.weather;
 document.body.classList.toggle('retro', !renderStyle.modern);
 rebuildPreview();
 const params = new URLSearchParams(location.search);
@@ -338,6 +339,7 @@ function optionsMenu() {
   const onoff = (v) => (v ? 'ON' : 'OFF');
   const adj = (key, d) => { settings[key] = Math.max(0, Math.min(1, Math.round((settings[key] + d) * 10) / 10)); applySettings(); saveSettings(); };
   const tog = (key) => () => { settings[key] = !settings[key]; key === 'hires' ? resize() : applySettings(); saveSettings(); };
+  const togWeather = () => { settings.weather = !settings.weather; renderStyle.weather = settings.weather; saveSettings(); startAttract(game.attractTrack); };
   const gfx = () => { setGraphics(!renderStyle.modern); const m = optionsMenu(); m.sel = 0; toMenu(m); };
   const retroOnly = renderStyle.modern ? [] : [
       { label: 'VERTEX WOBBLE', value: () => onoff(settings.wobble), action: tog('wobble'), left: tog('wobble'), right: tog('wobble') },
@@ -351,7 +353,7 @@ function optionsMenu() {
       { label: 'GRAPHICS', value: () => (renderStyle.modern ? 'MODERN' : 'RETRO 32-BIT'), action: gfx, left: gfx, right: gfx },
       ...(renderStyle.modern ? [
         { label: 'QUALITY', value: () => QUALITY_NAMES[settings.quality] + (qualityCap < settings.quality ? ' (AUTO ' + QUALITY_NAMES[qualityCap] + ')' : ''), left: () => setQuality(-1), right: () => setQuality(1), action: () => setQuality(1, true) },
-        { label: 'WEATHER', value: () => onoff(settings.weather), action: tog('weather'), left: tog('weather'), right: tog('weather') },
+        { label: 'WEATHER', value: () => onoff(settings.weather), action: togWeather, left: togWeather, right: togWeather },
       ] : []),
       { label: 'MUSIC VOLUME', value: () => pct(settings.music), left: () => adj('music', -0.1), right: () => adj('music', 0.1) },
       { label: 'EFFECTS VOLUME', value: () => pct(settings.sfx), left: () => adj('sfx', -0.1), right: () => adj('sfx', 0.1) },

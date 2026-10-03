@@ -82,7 +82,7 @@ void main() {
 // Global graphics style. Modern: lit PBR materials, full resolution, bloom.
 // Retro: the PlayStation-style shader below.
 // quality: 0 low, 1 medium, 2 high, 3 ultra (the effective level after automatic slow-down protection).
-export const renderStyle = { modern: true, quality: 2 };
+export const renderStyle = { modern: true, quality: 2, weather: true };
 
 export function setOpacity(mat, a) {
   if (mat.uniforms && mat.uniforms.uAlpha) mat.uniforms.uAlpha.value = a;

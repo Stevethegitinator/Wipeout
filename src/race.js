@@ -13,6 +13,7 @@ import { glowTexture } from './textures.js';
 import { Trail, SpeedLines, Smoke, Debris, shieldMaterial } from './effects.js';
 import { Lensflare, LensflareElement } from '../vendor/addons/objects/Lensflare.js';
 import { EXRLoader } from '../vendor/addons/loaders/EXRLoader.js';
+import { Weather } from './weather.js';
 
 // Real-world environment maps (Poly Haven, CC0), loaded once and shared.
 const envCache = new Map();
@@ -80,6 +81,24 @@ export class Race {
     this.speedFx = { blur: 0, aberration: 0 };
     if (renderStyle.modern) this.setupLighting(renderer);
     else scene.fog = null;
+    if (renderStyle.modern && renderStyle.weather && this.theme.weather) {
+      const count = [600, 1500, 3000, 5000][renderStyle.quality] * (this.theme.weather === 'sand' ? 1.6 : 1) | 0;
+      this.weather = new Weather(this.theme.weather, count, this.glowTex);
+      this.root.add(this.weather.object);
+      this.spray = new Smoke(160, this.glowTex);
+      this.spray.mesh.material.color.set(this.theme.weather === 'sand' ? 0xc89060 : 0xc0c8d4);
+      this.spray.mesh.material.opacity = 0.35;
+      this.root.add(this.spray.mesh);
+      this.lastCam = new THREE.Vector3();
+      this.camVel = new THREE.Vector3();
+      // Weather thickens the air.
+      const f = this.scene.fog;
+      if (f) {
+        const k = { rain: [0.8, 0.6], snow: [0.7, 0.75], sand: [0.35, 0.4], crystals: [0.9, 0.85] }[this.theme.weather];
+        f.near *= k[0]; f.far *= k[1];
+        if (this.theme.weather === 'sand') f.color.set(0xd09060);
+      }
+    }
 
     // Entrants: every pilot of every team. Grid order may be given (championship).
     const entrants = [];
@@ -139,6 +158,8 @@ export class Race {
     this.scene.fog = new THREE.Fog(th.fog, th.fogNear * 1.8, th.fogFar * 2.4);
     const hemi = new THREE.HemisphereLight(th.sky[1], th.mountains, night ? 1.1 : 1.3);
     this.root.add(hemi);
+    this.hemi = hemi;
+    this.hemiBase = hemi.intensity;
     const sun = new THREE.DirectionalLight(night ? 0xa8c0ff : 0xfff0d8, night ? 1.0 : 2.6);
     sun.castShadow = true;
     const sm = [512, 1024, 2048, 4096][renderStyle.quality];
@@ -370,6 +391,24 @@ export class Race {
     this.updateVisuals(dt);
     this.particles.update(dt);
     this.fx.smoke.update(dt, this.camera);
+    if (this.weather) {
+      this.camVel.subVectors(this.camera.position, this.lastCam).multiplyScalar(1 / Math.max(dt, 1e-3));
+      if (this.camVel.lengthSq() > 1e6) this.camVel.set(0, 0, 0); // camera cut
+      this.lastCam.copy(this.camera.position);
+      const bolt = this.weather.update(dt, this.camera, this.camVel);
+      if (this.hemi) this.hemi.intensity = this.hemiBase + bolt * 6;
+      // spray or dust kicked up behind fast craft
+      if (this.theme.weather === 'rain' || this.theme.weather === 'sand') {
+        for (const s of this.ships) {
+          if (s.airborne || s.speed < 40 || Math.random() > 0.6) continue;
+          if (s.pos.distanceToSquared(this.camera.position) > 150 * 150) continue;
+          _v.copy(s.pos).addScaledVector(s.fwd, -3).addScaledVector(s.up, -0.6);
+          _w.copy(s.vel).multiplyScalar(0.3).addScaledVector(s.up, 4 + Math.random() * 4);
+          this.spray.puff(_v, _w, 1.5 + s.speed * 0.02, 0.6 + Math.random() * 0.4);
+        }
+      }
+      this.spray.update(dt, this.camera);
+    }
     this.fx.debris.update(dt);
     if (this.world.clouds) this.world.clouds.material.map && this.world.clouds.material.map.offset.set(this.time * 0.002, this.time * 0.001);
     if (this.carLight && this.player) {

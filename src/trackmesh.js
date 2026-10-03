@@ -38,6 +38,9 @@ export function buildWorld(track) {
 
   // ---- Road surface -------------------------------------------------------
   const roadMaps = renderStyle.modern ? { normalMap: TX.surfaceMaps('road').normal, roughnessMap: TX.surfaceMaps('road').rough } : {};
+  // Rain soaks the road: darker and glossy, so it mirrors lights and craft.
+  const wet = renderStyle.modern && renderStyle.weather && theme.weather === 'rain';
+  if (wet) Object.assign(roadMaps, { rough: 0.12, color: 0xb0b4bc, roughnessMap: null });
   const roadIn = new MeshBuilder(), roadEdge = new MeshBuilder(), under = new MeshBuilder();
   for (let i = 0; i < N; i++) {
     if (track.gap[i]) continue;
