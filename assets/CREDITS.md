@@ -1,6 +1,6 @@
 # Asset credits
 
-`hdri/*.exr` (city, night, sunset) are environment maps from [Poly Haven](https://polyhaven.com/hdris)
+`hdri/*.exr.js` (city, night, sunset; base64-encoded OpenEXR) are environment maps from [Poly Haven](https://polyhaven.com/hdris)
 (CC0, public domain), resized and packaged by
 [@pmndrs/assets](https://www.npmjs.com/package/@pmndrs/assets) (CC0).
 They light and reflect on the craft and track; the visible skies are drawn by the game.

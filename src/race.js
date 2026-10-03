@@ -20,15 +20,22 @@ import { TrackReflection } from './reflection.js';
 const envCache = new Map();
 function loadEnvironment(name, renderer) {
   if (!envCache.has(name)) {
-    envCache.set(name, new Promise((resolve) => {
-      new EXRLoader().load(`assets/hdri/${name}.exr`, (tex) => {
-        tex.mapping = THREE.EquirectangularReflectionMapping;
-        const pm = new THREE.PMREMGenerator(renderer);
-        const rt = pm.fromEquirectangular(tex);
-        pm.dispose(); tex.dispose();
-        resolve(rt.texture);
-      }, undefined, () => resolve(null));
-    }));
+    // Packaged as a JS module so it loads anywhere scripts do; decoded here.
+    envCache.set(name, import(`../assets/hdri/${name}.exr.js`).then(({ default: b64 }) => {
+      const bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const td = new EXRLoader().parse(bytes.buffer);
+      const tex = new THREE.DataTexture(td.data, td.width, td.height, td.format, td.type);
+      tex.colorSpace = td.colorSpace ?? THREE.LinearSRGBColorSpace;
+      tex.flipY = false;
+      tex.minFilter = tex.magFilter = THREE.LinearFilter;
+      tex.mapping = THREE.EquirectangularReflectionMapping;
+      tex.needsUpdate = true;
+      const pm = new THREE.PMREMGenerator(renderer);
+      const rt = pm.fromEquirectangular(tex);
+      pm.dispose(); tex.dispose();
+      return rt.texture;
+    }).catch(() => null));
   }
   return envCache.get(name);
 }
