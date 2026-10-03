@@ -120,7 +120,8 @@ export function buildCarModel(spec, wheelMounts, wheelR) {
     pos.push(0, (p.yb + p.yl) / 2, z + (flip ? -0.015 : 0.015)); uvs.push(0.99, 0.005);
     for (let i = 0; i < RN - 1; i++) {
       const a = base + i, b = a + 1;
-      if (flip) idx.push(center, a, b); else idx.push(center, b, a);
+      // Counter-clockwise when seen from outside: the ring runs the other way round at the tail.
+      if (flip) idx.push(center, b, a); else idx.push(center, a, b);
     }
   }
   const bodyGeo = new THREE.BufferGeometry();
@@ -217,15 +218,15 @@ export function buildCarModel(spec, wheelMounts, wheelR) {
   for (const sx of [1, -1]) {
     const z = zMax - 0.14;
     const p = prof(z);
-    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 20), lampGlass);
+    const lamp = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.05, 20), lampGlass);
     lamp.rotation.x = Math.PI / 2;
-    lamp.position.set(sx * p.wb * 0.66, p.yl - 0.06, z + 0.02);
+    lamp.position.set(sx * p.wb * 0.62, p.yl - 0.08, zMax + 0.01);
     root.add(lamp); lamps.push(lamp);
     const lamp2 = lamp.clone(); lamp2.scale.setScalar(0.7); lamp2.position.x = sx * p.wb * 0.38; root.add(lamp2); lamps.push(lamp2);
   }
   // Grille.
   const grille = new THREE.Mesh(new THREE.PlaneGeometry(pf.wb * 0.5, 0.12), new THREE.MeshStandardMaterial({ map: grilleTexture(), roughness: 0.5, metalness: 0.5 }));
-  grille.position.set(0, pf.yl - 0.07, zMax + 0.005); root.add(grille);
+  grille.position.set(0, pf.yl - 0.1, zMax + 0.008); root.add(grille);
   // Front splitter & rear diffuser.
   const split = new THREE.Mesh(new THREE.BoxGeometry(pf.wb * 2.1, 0.04, 0.3), blackPlastic);
   split.position.set(0, pf.yb + 0.02, zMax - 0.1); root.add(split);
@@ -235,8 +236,17 @@ export function buildCarModel(spec, wheelMounts, wheelR) {
   for (const sx of [1, -1]) {
     const z = zMin + 0.1;
     const p = prof(z);
-    const t = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.12, 0.05), tailMat);
-    t.position.set(sx * p.wb * 0.66, p.yl - 0.02, z - 0.03); root.add(t); tails.push(t);
+    const t = new THREE.Mesh(new THREE.BoxGeometry(0.42, 0.13, 0.04), tailMat);
+    t.position.set(sx * p.wb * 0.58, p.yl - 0.04, zMin - 0.005); root.add(t); tails.push(t);
+  }
+  // Rear number plate and bumper strip.
+  {
+    const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.52, 0.12), new THREE.MeshStandardMaterial({ map: plateTexture(spec), roughness: 0.4 }));
+    plate.position.set(0, pr.yl - 0.2, zMin - 0.012); plate.rotation.y = Math.PI; root.add(plate);
+    const fplate = plate.clone(); fplate.position.set(0, pf.yb + 0.14, zMax + 0.012); fplate.rotation.y = 0; root.add(fplate);
+    const bumper = new THREE.Mesh(new THREE.BoxGeometry(pr.wb * 1.9, 0.08, 0.06), blackPlastic);
+    bumper.position.set(0, pr.yb + 0.1, zMin - 0.01); root.add(bumper);
+    const fb = bumper.clone(); fb.scale.x = pf.wb / pr.wb; fb.position.set(0, pf.yb + 0.06, zMax + 0.01); root.add(fb);
   }
   // Mirrors.
   for (const sx of [1, -1]) {
@@ -469,6 +479,15 @@ function rimGeometry(r) {
   hub.rotateX(Math.PI / 2); hub.translate(0, 0, 0.02);
   const parts = [g, barrel, hub].map((x) => { x.deleteAttribute('uv'); return x.toNonIndexed(); });
   return mergeGeometries(parts);
+}
+
+function plateTexture(spec) {
+  const c = canvas(256, 64), ctx = c.getContext('2d');
+  ctx.fillStyle = '#f2d21b'; ctx.fillRect(0, 0, 256, 64);
+  ctx.strokeStyle = '#111'; ctx.lineWidth = 4; ctx.strokeRect(2, 2, 252, 60);
+  ctx.fillStyle = '#111'; ctx.font = 'bold 40px "Arial Narrow", Arial, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText(`R${spec.number} OVC`, 128, 34);
+  return toTexture(c, { repeat: false });
 }
 
 function grilleTexture() {

@@ -39,6 +39,7 @@ export class World {
     this.waters = [];
     this.crowdMeshes = [];
     this.materials = [];
+    this.culled = [];
     this.build();
   }
 
@@ -118,7 +119,7 @@ export class World {
     for (let cx = x0; cx < x1; cx += size) for (let cz = z0; cz < z1; cz += size) {
       const d = roadDist(cx + size / 2, cz + size / 2) - size * 0.71;
       if (d > nearPad + 200) continue;
-      const segs = d < 140 ? [48, 64, 96, 112][qual] : d < 320 ? [16, 24, 32, 40][qual] : 10;
+      const segs = d < 140 ? [48, 64, 80, 112][qual] : d < 320 ? [16, 20, 28, 40][qual] : 10;
       const geo = this.terrainChunk(cx, cz, size, segs, d < 70, false);
       const mesh = new THREE.Mesh(geo, mat);
       mesh.receiveShadow = true;
@@ -286,7 +287,7 @@ export class World {
           const y0 = H * 0.22 + t * H * 0.72;
           const rad = (1 - t) * 3.1 + 0.55;
           const h = H * 0.8 / layers * 2.0;
-          const c = new THREE.ConeGeometry(rad, h, radial, 2, true);
+          const c = new THREE.ConeGeometry(rad, h, radial, 1, true);
           c.translate(0, y0 + h / 2, 0);
           // Droop the rim and jitter for an irregular silhouette.
           const p = c.attributes.position, nrm = c.attributes.normal, col = [];
@@ -406,10 +407,11 @@ export class World {
           col.setRGB(v * (0.95 + t.tint * 0.1), v, v * (1.02 - t.tint * 0.08));
           crown.setColorAt(i, col);
         });
-        crown.castShadow = true; crown.receiveShadow = true;
+        crown.castShadow = !far; crown.receiveShadow = true;
         crown.computeBoundingSphere();
         this.group.add(crown);
-        if (trunk) { trunk.castShadow = true; trunk.receiveShadow = true; trunk.computeBoundingSphere(); this.group.add(trunk); }
+        this.cull(crown, far ? 900 : 650);
+        if (trunk) { trunk.castShadow = !far; trunk.receiveShadow = true; trunk.computeBoundingSphere(); this.group.add(trunk); this.cull(trunk, far ? 500 : 400); }
       }
     }
   }
@@ -453,7 +455,7 @@ export class World {
     const r = rng(st.seed + 55);
     const tex = TX.grassCardTexture(st);
     const g1 = new THREE.PlaneGeometry(1.3, 0.7); g1.translate(0, 0.35, 0);
-    const parts = [0, 1, 2].map((i) => { const p = g1.clone(); p.rotateY(i * Math.PI / 3); return p; });
+    const parts = [0, 1].map((i) => { const p = g1.clone(); p.rotateY(i * Math.PI / 2 + 0.3); return p; });
     const geo0 = mergeGeometries(parts);
     // Normals point up so clumps light like the ground they sit on.
     const nrm = geo0.attributes.normal;
@@ -461,8 +463,8 @@ export class World {
     const geo = twoSided(geo0);
     const mat = new THREE.MeshStandardMaterial({ map: tex, alphaTest: 0.4, alphaToCoverage: true, roughness: 0.9 });
     addWind(mat, 0.18, 0, 1.5);
-    const count = Math.round(road.finish / 1000 * [5000, 9000, 15000, 24000][this.quality] * st.grass);
-    const chunkLen = 200;
+    const count = Math.round(road.finish / 1000 * [4000, 7000, 11000, 16000][this.quality] * st.grass);
+    const chunkLen = 90;
     const buckets = new Map();
     for (let k = 0; k < count; k++) {
       const s = r() * (road.finish + 100);
@@ -488,7 +490,14 @@ export class World {
       im.receiveShadow = true;
       im.computeBoundingSphere();
       this.group.add(im);
+      this.cull(im, [90, 120, 160, 220][this.quality]);
     }
+  }
+
+  // Hide a mesh when the camera is further than `dist` from its bounds.
+  cull(mesh, dist) {
+    const bs = mesh.boundingSphere || mesh.geometry.boundingSphere;
+    this.culled.push({ mesh, c: bs.center.clone(), r: bs.radius, d: dist });
   }
 
   buildRocks() {
@@ -771,6 +780,7 @@ export class World {
 
   update(dt, time, camPos, car) {
     shared.time.value = time;
+    for (const c of this.culled) c.mesh.visible = c.c.distanceTo(camPos) - c.r < c.d;
     for (const w of this.waters) w.tex.offset.set(time * 0.03, time * 0.05);
     // Crowds get excited as the car approaches.
     if (this.crowd && car) {

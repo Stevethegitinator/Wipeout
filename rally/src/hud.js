@@ -150,22 +150,21 @@ export class Hud {
 
   // Pace notes: the current call as a big arrow with modifiers, the next one smaller.
   drawNotes(st) {
-    const shown = st.notes || [];
+    const shown = (st.notes || []).slice().sort((a, b) => a.note.s - b.note.s).slice(0, 3);
     const g = this.g, S = this.S;
     const cx = this.w / 2, y = 30 * S;
-    const list = shown.slice(-3);
-    list.forEach((item, i) => {
+    // The next corner is the big one in the middle; later calls queue to the right.
+    shown.forEach((item, k) => {
       const ic = noteIcon(item.note);
       const age = st.noteTime - item.t;
-      const appear = clamp(age / 0.18, 0, 1);
+      const appear = clamp(age / 0.2, 0, 1);
       const fade = clamp((4.5 - age) / 0.5, 0, 1);
-      const k = list.length - 1 - i; // 0 = newest
-      const scale = (k === 0 ? 1 : 0.72) * (0.8 + 0.2 * appear);
-      const x = cx + (k === 0 ? 0 : -(150 + (k - 1) * 110) * S);
-      const alpha = fade * appear * (k === 0 ? 1 : 0.65);
+      const scale = (k === 0 ? 1.15 : k === 1 ? 0.7 : 0.55) * (0.85 + 0.15 * appear);
+      const x = cx + (k === 0 ? 0 : (150 + (k - 1) * 105) * S) + (1 - appear) * 40 * S;
+      const alpha = Math.max(fade, k === 0 ? 0.85 : 0) * appear * (k === 0 ? 1 : 0.75);
       g.save();
       g.globalAlpha = alpha;
-      g.translate(x, y + 60 * S * scale);
+      g.translate(x, y + 58 * S * scale);
       g.scale(scale, scale);
       this.drawNoteIcon(ic, S);
       g.restore();
@@ -186,7 +185,7 @@ export class Hud {
       const dir = ic.corner.dir; // +1 right
       // Draw a road arrow: straight in, then curving by `ang`.
       g.save();
-      g.strokeStyle = col; g.lineWidth = 11 * S; g.shadowColor = col; g.shadowBlur = 16 * S;
+      g.strokeStyle = col; g.lineWidth = 13 * S; g.shadowColor = col; g.shadowBlur = 18 * S;
       const len = R * 0.8, rad = ic.corner.grade === 'hairpin' ? R * 0.32 : R * (1.1 - ang / Math.PI * 0.6);
       g.beginPath();
       g.moveTo(0, R * 0.85); g.lineTo(0, R * 0.2);
@@ -198,7 +197,7 @@ export class Hud {
       g.stroke();
       // Arrow head at the end.
       const ex = cxA + Math.cos(end) * rad, ey = R * 0.2 + Math.sin(end) * rad;
-      const tang = end + (dir > 0 ? Math.PI / 2 : -Math.PI / 2) + Math.PI;
+      const tang = end + (dir > 0 ? Math.PI / 2 : -Math.PI / 2); // direction of travel at the arc's end
       g.fillStyle = col;
       g.beginPath();
       g.moveTo(ex + Math.cos(tang) * 16 * S, ey + Math.sin(tang) * 16 * S);
@@ -252,7 +251,7 @@ export class Hud {
   drawDamage(st) {
     const g = this.g, S = this.S;
     const x = 28 * S, y = this.h - 150 * S, w = 70 * S, h = 120 * S;
-    this.panel(x - 10 * S, y - 26 * S, 200 * S, h + 40 * S, 10 * S, 0.4);
+    this.panel(x - 10 * S, y - 26 * S, 210 * S, h + 40 * S, 10 * S, 0.4);
     this.text('DAMAGE', x, y - 8 * S, 14 * S, '#9fb3c8', 'left', 700, false);
     const d = st.damage;
     const col = (v) => v < 0.15 ? '#3dff6e' : v < 0.45 ? '#ffd23a' : v < 0.75 ? '#ff8a2a' : '#ff2a2a';
@@ -267,8 +266,8 @@ export class Hud {
     const rows = [['ENGINE', d.engine], ['RADIATOR', d.radiator], ['GEARBOX', d.gearbox], ['SUSPENSION', d.suspension], ['STEERING', d.steering], ['BODY', d.body]];
     rows.forEach(([n, v], i) => {
       this.text(n, x + w + 6 * S, y + 12 * S + i * 18 * S, 13 * S, '#cdd8e4', 'left', 600, false);
-      g.fillStyle = 'rgba(255,255,255,0.15)'; g.fillRect(x + w + 74 * S, y + 4 * S + i * 18 * S, 40 * S, 7 * S);
-      g.fillStyle = col(v); g.fillRect(x + w + 74 * S, y + 4 * S + i * 18 * S, 40 * S * clamp(v, 0, 1), 7 * S);
+      g.fillStyle = 'rgba(255,255,255,0.15)'; g.fillRect(x + w + 84 * S, y + 4 * S + i * 18 * S, 36 * S, 7 * S);
+      g.fillStyle = col(v); g.fillRect(x + w + 84 * S, y + 4 * S + i * 18 * S, 36 * S * clamp(v, 0, 1), 7 * S);
     });
   }
 
@@ -287,7 +286,7 @@ export class Hud {
 
   drawMessages(dt) {
     const g = this.g, S = this.S;
-    let y = this.h * 0.3;
+    let y = Math.max(this.h * 0.42, 300 * S);
     this.msgs = this.msgs.filter((m) => (m.t += dt) < m.dur);
     for (const m of this.msgs) {
       const a = clamp(m.t / 0.15, 0, 1) * clamp((m.dur - m.t) / 0.4, 0, 1);

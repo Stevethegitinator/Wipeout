@@ -41,6 +41,7 @@ renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.0;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.info.autoReset = false;
 const camera = new THREE.PerspectiveCamera(62, 16 / 9, 0.1, 6500);
 let scene = new THREE.Scene();
 
@@ -1019,6 +1020,7 @@ function frame(now) {
   last = now;
   G.time += dt;
   input.poll(dt);
+  renderer.info.reset();
   try {
     if (G.mode === 'race' && G.race && !G.race.paused) {
       raceUpdate(dt);
@@ -1085,7 +1087,7 @@ function frame(now) {
 }
 
 // Debug/test hooks: ?stage=N&car=N jumps straight into a stage; ?autopilot lets the AI drive.
-window.__game = { G, settings, startStage, audio };
+window.__game = { G, settings, startStage, audio, renderer };
 window.__setShow = (c, a) => { setShowroomCar(c); window.__showAngle = a; };
 if (params.has('stage')) {
   const go = async () => { await startAudio().catch(() => {}); startStage({ mode: params.has('trial') ? 'trial' : 'single', stage: clamp(+params.get('stage') || 0, 0, STAGES.length - 1), car: clamp(+params.get('car') || 0, 0, CARS.length - 1) }); };
