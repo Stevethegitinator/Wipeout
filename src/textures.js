@@ -260,3 +260,107 @@ export function cloudTexture(dark) {
   t.colorSpace = THREE.SRGBColorSpace;
   return t;
 }
+
+// ---- Surface detail maps (modern mode) --------------------------------------
+// Height fields painted at 512px, turned into tangent-space normal maps, plus
+// roughness maps for scuffs and polish. Layouts match the colour textures.
+function heightCanvas(draw, size = 512, seed = 1) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const x = c.getContext('2d');
+  x.fillStyle = 'rgb(128,128,128)'; x.fillRect(0, 0, size, size);
+  draw(x, size, makeRng(seed));
+  return c;
+}
+
+function normalFromHeight(hc, strength) {
+  const S = hc.width;
+  const src = hc.getContext('2d').getImageData(0, 0, S, S).data;
+  const out = document.createElement('canvas'); out.width = out.height = S;
+  const ox = out.getContext('2d');
+  const img = ox.createImageData(S, S);
+  const h = (i, j) => src[((((j + S) % S) * S) + ((i + S) % S)) * 4] / 255;
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    const dx = (h(i + 1, j) - h(i - 1, j)) * strength, dy = (h(i, j + 1) - h(i, j - 1)) * strength;
+    const l = Math.hypot(dx, dy, 1);
+    const k = (j * S + i) * 4;
+    img.data[k] = (-dx / l * 0.5 + 0.5) * 255;
+    img.data[k + 1] = (dy / l * 0.5 + 0.5) * 255;
+    img.data[k + 2] = (1 / l * 0.5 + 0.5) * 255;
+    img.data[k + 3] = 255;
+  }
+  ox.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(out);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
+
+function grain(x, S, rng, amount, size = 1) {
+  for (let k = 0; k < S * S * 0.15 / (size * size); k++) {
+    const v = 128 + (rng() - 0.5) * amount;
+    x.fillStyle = `rgb(${v},${v},${v})`;
+    x.fillRect(rng() * S, rng() * S, size, size);
+  }
+}
+
+function dataTexture(c) {
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.anisotropy = 8;
+  return t;
+}
+
+const surfaceCache = new Map();
+export function surfaceMaps(kind) {
+  if (surfaceCache.has(kind)) return surfaceCache.get(kind);
+  let maps;
+  if (kind === 'road') {
+    const hc = heightCanvas((x, S, rng) => {
+      grain(x, S, rng, 70, 2);
+      grain(x, S, rng, 40, 1);
+      // panel seams (grooves) matching the colour texture
+      x.fillStyle = 'rgb(20,20,20)';
+      x.fillRect(0, 0, S, 10); x.fillRect(0, S / 2, S, 10); x.fillRect(0, 0, 10, S);
+      // rivets
+      x.fillStyle = 'rgb(230,230,230)';
+      for (const [a, b] of [[4, 4], [60, 4], [4, 28], [60, 28], [4, 36], [60, 36], [4, 60], [60, 60]]) {
+        x.beginPath(); x.arc((a + 1) * S / 64, (b + 1) * S / 64, S / 64, 0, 7); x.fill();
+      }
+      // tread plate texture on each panel
+      x.fillStyle = 'rgba(200,200,200,0.35)';
+      for (let yy = 24; yy < S; yy += 28) for (let xx = 24 + ((yy / 28) % 2) * 14; xx < S; xx += 28) x.fillRect(xx, yy, 12, 4);
+    }, 512, 3);
+    const rc = heightCanvas((x, S, rng) => {
+      x.fillStyle = 'rgb(110,110,110)'; x.fillRect(0, 0, S, S);
+      // polished racing line streaks and scuffs
+      for (let k = 0; k < 40; k++) {
+        const v = 60 + rng() * 120;
+        x.fillStyle = `rgba(${v},${v},${v},0.35)`;
+        x.fillRect(rng() * S, 0, 4 + rng() * 30, S);
+      }
+      grain(x, S, rng, 80, 2);
+    }, 512, 4);
+    maps = { normal: normalFromHeight(hc, 3), rough: dataTexture(rc) };
+  } else if (kind === 'wall') {
+    const hc = heightCanvas((x, S, rng) => {
+      grain(x, S, rng, 40, 2);
+      x.fillStyle = 'rgb(40,40,40)';
+      x.fillRect(0, S * 3 / 32, S, 6); x.fillRect(0, S * 26 / 32, S, 8); x.fillRect(S * 31 / 64, 0, 10, S);
+      x.fillStyle = 'rgb(200,200,200)';
+      x.fillRect(0, S * 8 / 32, S, 4); x.fillRect(0, S * 18 / 32, S, 4);
+    }, 512, 5);
+    maps = { normal: normalFromHeight(hc, 2.5), rough: null };
+  } else {
+    const hc = heightCanvas((x, S, rng) => {
+      for (let k = 0; k < 900; k++) {
+        const v = 80 + rng() * 120, r = 2 + rng() * 14;
+        x.fillStyle = `rgba(${v},${v},${v},0.5)`;
+        x.beginPath(); x.arc(rng() * S, rng() * S, r, 0, 7); x.fill();
+      }
+      grain(x, S, rng, 90, 2);
+    }, 256, 6);
+    maps = { normal: normalFromHeight(hc, 4), rough: null };
+  }
+  surfaceCache.set(kind, maps);
+  return maps;
+}

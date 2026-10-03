@@ -98,6 +98,7 @@ const speedPass = new ShaderPass({
 });
 composer.addPass(speedPass);
 composer.addPass(new OutputPass());
+const qualityPasses = [];
 
 // Team preview scene for the selection screen.
 const previewScene = new THREE.Scene();
@@ -121,18 +122,21 @@ rebuildPreview();
 const params = new URLSearchParams(location.search);
 const AUTOPILOT = params.has('autopilot'); // testing aid: the AI flies the player's craft
 let W = 320, H = 240;
-// Adaptive quality for modern mode: 2 = full, 1 = reduced resolution, 0 = also no shadows/bloom.
-let quality = 2;
+// Graphics quality: the player's choice (0 low .. 3 ultra), capped automatically
+// if the frame rate drops so the game stays smooth.
+const QUALITY_NAMES = ['LOW', 'MEDIUM', 'HIGH', 'ULTRA'];
+let qualityCap = 3;
 const perf = { time: 0, frames: 0, settle: 3 };
+function effectiveQuality() { return Math.min(settings.quality, qualityCap); }
 function adaptQuality(dt) {
-  if (!renderStyle.modern || quality === 0 || game.state === 'loading') return;
+  if (!renderStyle.modern || effectiveQuality() === 0 || game.state === 'loading') return;
   if (perf.settle > 0) { perf.settle -= dt; return; }
   perf.time += dt; perf.frames++;
   if (perf.time < 2) return;
   const fps = perf.frames / perf.time;
   perf.time = 0; perf.frames = 0;
   if (fps < 45) {
-    quality--;
+    qualityCap = effectiveQuality() - 1;
     perf.settle = 2;
     resize();
   }
@@ -140,7 +144,10 @@ function adaptQuality(dt) {
 
 function resize() {
   if (renderStyle.modern) {
-    const pr = quality >= 2 ? Math.min(window.devicePixelRatio || 1, 2) : quality === 1 ? Math.min(1, window.devicePixelRatio || 1) : 0.75;
+    const quality = effectiveQuality();
+    renderStyle.quality = quality;
+    const dpr = window.devicePixelRatio || 1;
+    const pr = [Math.min(1, dpr) * 0.75, Math.min(1, dpr), Math.min(dpr, 2), Math.min(dpr, 2)][quality];
     W = innerWidth; H = innerHeight;
     renderer.setPixelRatio(pr);
     renderer.setSize(W, H, false);
@@ -153,6 +160,12 @@ function resize() {
     renderer.shadowMap.enabled = quality > 0;
     bloom.enabled = quality > 0;
     raysPass.enabled = quality > 0;
+    applyQualityPasses(quality);
+    // Anti-aliasing: more MSAA samples at higher quality, where the GPU supports it.
+    const samples = quality >= 3 ? Math.min(8, renderer.capabilities.maxSamples || 4) : quality >= 1 ? 4 : 0;
+    for (const t of [composer.renderTarget1, composer.renderTarget2]) {
+      if (t.samples !== samples) { t.samples = samples; t.dispose(); }
+    }
     speedPass.uniforms.uBlur.value = 0;
     scene.traverse((o) => { if (o.material && o.material.needsUpdate !== undefined && o.isMesh) o.material.needsUpdate = true; });
   } else {
@@ -180,6 +193,18 @@ function applySettings() {
   audio.setVolumes(settings.music, settings.sfx);
 }
 
+// Changing quality rebuilds the scene, since scenery density and lights are set at build time.
+function setQuality(d, wrap = false) {
+  let q = settings.quality + d;
+  if (wrap) q = (q + 4) % 4;
+  settings.quality = Math.max(0, Math.min(3, q));
+  qualityCap = 3; perf.settle = 3;
+  saveSettings();
+  resize();
+  rebuildPreview();
+  startAttract(game.attractTrack);
+}
+
 function setGraphics(modern) {
   settings.graphics = modern ? 'modern' : 'retro';
   saveSettings();
@@ -191,7 +216,8 @@ function setGraphics(modern) {
 }
 
 function loadSettings() {
-  const def = { graphics: 'modern', music: 0.6, sfx: 0.8, wobble: true, affine: true, dither: true, hires: false, laps: 3 };
+  const def = { graphics: 'modern', weather: true, music: 0.6, sfx: 0.8, wobble: true, affine: true, dither: true, hires: false, laps: 3 };
+  def.quality = 2;
   try { return { ...def, ...JSON.parse(localStorage.getItem('hoverline.settings') || '{}') }; } catch { return def; }
 }
 function saveSettings() { try { localStorage.setItem('hoverline.settings', JSON.stringify(settings)); } catch { /* storage unavailable */ } }
@@ -323,6 +349,10 @@ function optionsMenu() {
     title: 'OPTIONS',
     items: [
       { label: 'GRAPHICS', value: () => (renderStyle.modern ? 'MODERN' : 'RETRO 32-BIT'), action: gfx, left: gfx, right: gfx },
+      ...(renderStyle.modern ? [
+        { label: 'QUALITY', value: () => QUALITY_NAMES[settings.quality] + (qualityCap < settings.quality ? ' (AUTO ' + QUALITY_NAMES[qualityCap] + ')' : ''), left: () => setQuality(-1), right: () => setQuality(1), action: () => setQuality(1, true) },
+        { label: 'WEATHER', value: () => onoff(settings.weather), action: tog('weather'), left: tog('weather'), right: tog('weather') },
+      ] : []),
       { label: 'MUSIC VOLUME', value: () => pct(settings.music), left: () => adj('music', -0.1), right: () => adj('music', 0.1) },
       { label: 'EFFECTS VOLUME', value: () => pct(settings.sfx), left: () => adj('sfx', -0.1), right: () => adj('sfx', 0.1) },
       { label: 'RACE LAPS', value: () => `${settings.laps}`, left: () => { settings.laps = Math.max(1, settings.laps - 1); saveSettings(); }, right: () => { settings.laps = Math.min(9, settings.laps + 1); saveSettings(); } },
@@ -552,12 +582,17 @@ function render() {
 }
 
 const _sv = new THREE.Vector3(), _sw = new THREE.Vector3();
+
+// Passes that only run at higher quality levels (filled in below as they are added).
+function applyQualityPasses(q) {
+  for (const [pass, min] of qualityPasses) pass.enabled = q >= min;
+}
 function renderModern() {
   const r = game.race;
   if (r) {
     const g = r.theme.grade || { tint: [1, 1, 1], sat: 1, contrast: 1 };
     const u = speedPass.uniforms;
-    u.uBlur.value = game.state === 'race' && quality > 0 ? r.speedFx.blur : 0;
+    u.uBlur.value = game.state === 'race' && renderStyle.quality > 0 ? r.speedFx.blur : 0;
     u.uAberr.value = game.state === 'race' ? r.speedFx.aberration : 0;
     u.uSat.value = g.sat; u.uContrast.value = g.contrast; u.uTint.value.set(...g.tint);
     u.uTime.value = game.t; u.uAspect.value = W / H;

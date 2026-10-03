@@ -81,7 +81,8 @@ void main() {
 
 // Global graphics style. Modern: lit PBR materials, full resolution, bloom.
 // Retro: the PlayStation-style shader below.
-export const renderStyle = { modern: true };
+// quality: 0 low, 1 medium, 2 high, 3 ultra (the effective level after automatic slow-down protection).
+export const renderStyle = { modern: true, quality: 2 };
 
 export function setOpacity(mat, a) {
   if (mat.uniforms && mat.uniforms.uAlpha) mat.uniforms.uAlpha.value = a;
@@ -92,6 +93,7 @@ function modernMaterial(opts) {
   const {
     map = null, color = 0xffffff, vertexColors = false, additive = false, transparent = false,
     alpha = 1, side = THREE.FrontSide, fog = true, depthWrite, glow = 0, rough = 0.72, metal = 0.08,
+    normalMap = null, roughnessMap = null, normalScale = 1,
   } = opts;
   if (additive || transparent || !fog) {
     return new THREE.MeshBasicMaterial({
@@ -101,6 +103,8 @@ function modernMaterial(opts) {
     });
   }
   const m = new THREE.MeshStandardMaterial({ map, color, vertexColors, side, roughness: rough, metalness: metal });
+  if (normalMap && renderStyle.quality >= 1) { m.normalMap = normalMap; m.normalScale.set(normalScale, normalScale); }
+  if (roughnessMap && renderStyle.quality >= 1) m.roughnessMap = roughnessMap;
   if (glow) {
     m.emissive = new THREE.Color(map ? 0xffffff : color);
     m.emissiveMap = map;

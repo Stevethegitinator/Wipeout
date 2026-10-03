@@ -97,19 +97,19 @@ export const TRACKS = [
 export const THEMES = {
   alpine: {
     sky: [0x3a78c8, 0x9cc4e8, 0xdfe9f0], fog: 0xb8cfe0, fogNear: 260, fogFar: 1100,
-    grade: { tint: [1.0, 1.0, 1.03], sat: 1.12, contrast: 1.08 }, ground: 'snowgrass', accent: '#e8402c', accent2: '#ffffff', mountains: 0x6f86a8, night: false,
+    grade: { tint: [1.0, 1.0, 1.03], sat: 1.12, contrast: 1.08 }, env: 'city', ground: 'snowgrass', accent: '#e8402c', accent2: '#ffffff', mountains: 0x6f86a8, night: false,
   },
   city: {
     sky: [0x05030f, 0x1b0f3a, 0x6a2c6e], fog: 0x2a1640, fogNear: 200, fogFar: 950,
-    grade: { tint: [1.04, 0.96, 1.08], sat: 1.22, contrast: 1.12 }, ground: 'concrete', accent: '#ff2a8a', accent2: '#22e6ff', mountains: 0x1a1030, night: true,
+    grade: { tint: [1.04, 0.96, 1.08], sat: 1.22, contrast: 1.12 }, env: 'night', ground: 'concrete', accent: '#ff2a8a', accent2: '#22e6ff', mountains: 0x1a1030, night: true,
   },
   desert: {
     sky: [0x3b2a6a, 0xd06a48, 0xffc27a], fog: 0xe8a070, fogNear: 260, fogFar: 1150,
-    grade: { tint: [1.06, 1.0, 0.92], sat: 1.15, contrast: 1.1 }, ground: 'sand', accent: '#ffb000', accent2: '#2a2a2a', mountains: 0x9a5a48, night: false,
+    grade: { tint: [1.06, 1.0, 0.92], sat: 1.15, contrast: 1.1 }, env: 'sunset', ground: 'sand', accent: '#ffb000', accent2: '#2a2a2a', mountains: 0x9a5a48, night: false,
   },
   arctic: {
     sky: [0x020818, 0x0c2a4a, 0x2a6a7a], fog: 0x12304a, fogNear: 220, fogFar: 1000,
-    grade: { tint: [0.94, 1.0, 1.08], sat: 1.1, contrast: 1.1 }, ground: 'ice', accent: '#46f0c8', accent2: '#b070ff', mountains: 0x1c3a58, night: true,
+    grade: { tint: [0.94, 1.0, 1.08], sat: 1.1, contrast: 1.1 }, env: 'night', ground: 'ice', accent: '#46f0c8', accent2: '#b070ff', mountains: 0x1c3a58, night: true,
   },
 };
 

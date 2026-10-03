@@ -37,6 +37,7 @@ export function buildWorld(track) {
   }
 
   // ---- Road surface -------------------------------------------------------
+  const roadMaps = renderStyle.modern ? { normalMap: TX.surfaceMaps('road').normal, roughnessMap: TX.surfaceMaps('road').rough } : {};
   const roadIn = new MeshBuilder(), roadEdge = new MeshBuilder(), under = new MeshBuilder();
   for (let i = 0; i < N; i++) {
     if (track.gap[i]) continue;
@@ -64,8 +65,8 @@ export function buildWorld(track) {
     }
   }
   const side = THREE.DoubleSide;
-  group.add(roadIn.build(psxMaterial({ map: TX.roadTexture(false, theme.accent), vertexColors: true, side, rough: 0.3, metal: 0.25 })));
-  group.add(roadEdge.build(psxMaterial({ map: TX.roadTexture(true, theme.accent), vertexColors: true, side, rough: 0.3, metal: 0.25 })));
+  group.add(roadIn.build(psxMaterial({ map: TX.roadTexture(false, theme.accent), vertexColors: true, side, rough: 0.55, metal: 0.25, ...roadMaps })));
+  group.add(roadEdge.build(psxMaterial({ map: TX.roadTexture(true, theme.accent), vertexColors: true, side, rough: 0.55, metal: 0.25, ...roadMaps })));
   group.add(under.build(psxMaterial({ map: TX.underTexture(), vertexColors: true, side })));
 
   // ---- Barriers and tunnels ----------------------------------------------
@@ -104,7 +105,7 @@ export function buildWorld(track) {
       roof.quad(v(i, -wi, 8), v(j, -wj, 8), v(j, wj, 12), v(i, wi, 12), [0, 0, 1, 0, 1, 1, 0, 1], [0.6, 0.6, 0.8, 0.8]);
     }
   }
-  group.add(wall.build(psxMaterial({ map: TX.wallTexture(theme.accent, theme.accent2), vertexColors: true, side, rough: 0.5, metal: 0.3 })));
+  group.add(wall.build(psxMaterial({ map: TX.wallTexture(theme.accent, theme.accent2), vertexColors: true, side, rough: 0.5, metal: 0.3, normalMap: renderStyle.modern ? TX.surfaceMaps('wall').normal : null })));
   if (!roof.empty) group.add(roof.build(psxMaterial({ map: TX.roofTexture(night), vertexColors: true, side, glow: 0.9 })));
 
   // ---- Speed and weapon pads ---------------------------------------------
@@ -331,7 +332,7 @@ export function buildWorld(track) {
       [a.x * tscale, a.z * tscale, d.x * tscale, d.z * tscale, c.x * tscale, c.z * tscale, bb.x * tscale, bb.z * tscale],
       [shade(a, k), shade(d, k + 1), shade(c, k + 2), shade(bb, k + 3)]);
   }
-  group.add(terrain.build(psxMaterial({ map: TX.groundTexture(theme.ground), vertexColors: true, side })));
+  group.add(terrain.build(psxMaterial({ map: TX.groundTexture(theme.ground), vertexColors: true, side, rough: theme.ground === 'ice' ? 0.25 : 0.9, normalMap: renderStyle.modern ? TX.surfaceMaps('ground').normal : null, normalScale: 0.8 })));
   const groundAt = (x, z) => terrainH(x, z, distToTrack(x, z));
 
   // ---- Sky dome and horizon ----------------------------------------------

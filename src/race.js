@@ -12,6 +12,24 @@ import { psxMaterial, psxUniforms, renderStyle, setOpacity } from './psx.js';
 import { glowTexture } from './textures.js';
 import { Trail, SpeedLines, Smoke, Debris, shieldMaterial } from './effects.js';
 import { Lensflare, LensflareElement } from '../vendor/addons/objects/Lensflare.js';
+import { EXRLoader } from '../vendor/addons/loaders/EXRLoader.js';
+
+// Real-world environment maps (Poly Haven, CC0), loaded once and shared.
+const envCache = new Map();
+function loadEnvironment(name, renderer) {
+  if (!envCache.has(name)) {
+    envCache.set(name, new Promise((resolve) => {
+      new EXRLoader().load(`assets/hdri/${name}.exr`, (tex) => {
+        tex.mapping = THREE.EquirectangularReflectionMapping;
+        const pm = new THREE.PMREMGenerator(renderer);
+        const rt = pm.fromEquirectangular(tex);
+        pm.dispose(); tex.dispose();
+        resolve(rt.texture);
+      }, undefined, () => resolve(null));
+    }));
+  }
+  return envCache.get(name);
+}
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -123,7 +141,8 @@ export class Race {
     this.root.add(hemi);
     const sun = new THREE.DirectionalLight(night ? 0xa8c0ff : 0xfff0d8, night ? 1.0 : 2.6);
     sun.castShadow = true;
-    sun.shadow.mapSize.set(2048, 2048);
+    const sm = [512, 1024, 2048, 4096][renderStyle.quality];
+    sun.shadow.mapSize.set(sm, sm);
     const sc = sun.shadow.camera;
     sc.left = -70; sc.right = 70; sc.top = 70; sc.bottom = -70; sc.near = 1; sc.far = 500;
     sun.shadow.bias = -0.0004;
@@ -162,6 +181,14 @@ export class Race {
       pm.dispose();
       this.scene.environment = this.envRT.texture;
       this.scene.environmentIntensity = night ? 0.6 : 1.0;
+      // Swap in the photographed environment once it has loaded.
+      if (th.env) loadEnvironment(th.env, renderer).then((tex) => {
+        if (tex && !this.disposed) {
+          this.scene.environment = tex;
+          this.scene.environmentIntensity = night ? 0.5 : 0.45;
+          this.scene.environmentRotation = new THREE.Euler(0, Math.atan2(this.sunDir.x, this.sunDir.z), 0);
+        }
+      });
     }
   }
 
@@ -199,6 +226,7 @@ export class Race {
   }
 
   dispose() {
+    this.disposed = true;
     this.scene.remove(this.root);
     this.scene.environment = null;
     if (this.envRT) this.envRT.dispose();
