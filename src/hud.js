@@ -56,6 +56,21 @@ function weaponIcon(ctx, id, x, y, s) {
       ctx.beginPath(); ctx.moveTo(0, -s * 0.35); ctx.lineTo(s * 0.28, -s * 0.2); ctx.lineTo(s * 0.2, s * 0.15); ctx.lineTo(0, s * 0.35);
       ctx.lineTo(-s * 0.2, s * 0.15); ctx.lineTo(-s * 0.28, -s * 0.2); ctx.closePath(); ctx.stroke();
       break;
+    case 'cannon':
+      for (const o of [-0.22, -0.07, 0.08, 0.23]) ctx.fillRect(o * s - s * 0.03, -s * 0.28, s * 0.06, s * 0.5);
+      ctx.fillRect(-s * 0.3, s * 0.24, s * 0.6, s * 0.06);
+      break;
+    case 'plasma':
+      ctx.beginPath(); ctx.arc(-s * 0.08, 0, s * 0.16, 0, 7); ctx.fill();
+      ctx.fillRect(s * 0.05, -s * 0.04, s * 0.3, s * 0.08);
+      break;
+    case 'emp':
+      ctx.beginPath(); ctx.arc(0, 0, s * 0.1, 0, 7); ctx.fill();
+      for (let a = 0; a < 8; a++) { ctx.beginPath(); ctx.moveTo(Math.cos(a * 0.785) * s * 0.18, Math.sin(a * 0.785) * s * 0.18); ctx.lineTo(Math.cos(a * 0.785) * s * 0.34, Math.sin(a * 0.785) * s * 0.34); ctx.stroke(); }
+      break;
+    case 'well':
+      for (const r of [0.34, 0.22, 0.1]) { ctx.beginPath(); ctx.arc(r * s * 0.3, 0, r * s, 0.3, 5.9); ctx.stroke(); }
+      break;
     case 'turbo':
       for (const o of [-0.18, 0.05]) { ctx.beginPath(); ctx.moveTo(o * s, -s * 0.25); ctx.lineTo(o * s + s * 0.2, 0); ctx.lineTo(o * s, s * 0.25); ctx.stroke(); }
       break;

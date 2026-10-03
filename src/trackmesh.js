@@ -39,6 +39,7 @@ export function buildWorld(track) {
   // ---- Road surface -------------------------------------------------------
   const roadIn = new MeshBuilder(), roadEdge = new MeshBuilder(), under = new MeshBuilder();
   for (let i = 0; i < N; i++) {
+    if (track.gap[i]) continue;
     const j = track.wrap(i + 1);
     const lw0 = track.width[i] / LANES, lw1 = track.width[j] / LANES;
     const v0 = (i * track.spacing) / lw0, v1 = ((i + 1) * track.spacing) / lw0;
@@ -49,7 +50,11 @@ export function buildWorld(track) {
       const flip = L === LANES - 1;
       const u0 = flip ? 1 : 0, u1 = flip ? 0 : 1;
       const bld = L === 0 || L === LANES - 1 ? roadEdge : roadIn;
-      bld.quad(a, b, c, d, [u0, v0, u1, v0, u1, v1, u0, v1], [c0, c0, c1, c1]);
+      // baked ambient occlusion: darker where the road meets the barrier
+      const ao = 0.72;
+      const ca = L === 0 ? c0 * ao : c0, cb = L === LANES - 1 ? c0 * ao : c0;
+      const cc = L === LANES - 1 ? c1 * ao : c1, cd = L === 0 ? c1 * ao : c1;
+      bld.quad(a, b, c, d, [u0, v0, u1, v0, u1, v1, u0, v1], [ca, cb, cc, cd]);
     }
     // underside and skirts
     const wi = track.width[i] / 2, wj = track.width[j] / 2;
@@ -59,13 +64,14 @@ export function buildWorld(track) {
     }
   }
   const side = THREE.DoubleSide;
-  group.add(roadIn.build(psxMaterial({ map: TX.roadTexture(false, theme.accent), vertexColors: true, side, rough: 0.55 })));
-  group.add(roadEdge.build(psxMaterial({ map: TX.roadTexture(true, theme.accent), vertexColors: true, side, rough: 0.55 })));
+  group.add(roadIn.build(psxMaterial({ map: TX.roadTexture(false, theme.accent), vertexColors: true, side, rough: 0.3, metal: 0.25 })));
+  group.add(roadEdge.build(psxMaterial({ map: TX.roadTexture(true, theme.accent), vertexColors: true, side, rough: 0.3, metal: 0.25 })));
   group.add(under.build(psxMaterial({ map: TX.underTexture(), vertexColors: true, side })));
 
   // ---- Barriers and tunnels ----------------------------------------------
   const wall = new MeshBuilder(), roof = new MeshBuilder();
   for (let i = 0; i < N; i++) {
+    if (track.gap[i]) continue;
     const j = track.wrap(i + 1);
     const u0 = (i * track.spacing) / 8, u1 = ((i + 1) * track.spacing) / 8;
     const tun = track.tunnel[i] || track.tunnel[j];
@@ -99,7 +105,7 @@ export function buildWorld(track) {
     }
   }
   group.add(wall.build(psxMaterial({ map: TX.wallTexture(theme.accent, theme.accent2), vertexColors: true, side, rough: 0.5, metal: 0.3 })));
-  if (!roof.empty) group.add(roof.build(psxMaterial({ map: TX.roofTexture(night), vertexColors: true, side })));
+  if (!roof.empty) group.add(roof.build(psxMaterial({ map: TX.roofTexture(night), vertexColors: true, side, glow: 0.9 })));
 
   // ---- Speed and weapon pads ---------------------------------------------
   const padSpeed = new MeshBuilder(), padWeapon = new MeshBuilder();
@@ -120,6 +126,7 @@ export function buildWorld(track) {
   // ---- Guide lights: glowing edge strips and corner chevrons ------------------
   const strip = new MeshBuilder(), chev = new MeshBuilder();
   for (let i = 0; i < N; i++) {
+    if (track.gap[i]) continue;
     const j = track.wrap(i + 1);
     for (const s of [-1, 1]) {
       const a0 = s * (track.width[i] / 2 - 0.1), a1 = s * (track.width[i] / 2 - 0.5);
@@ -132,6 +139,7 @@ export function buildWorld(track) {
     }
   }
   for (let i = 0; i < N; i += 5) {
+    if (track.gap[i]) continue;
     const k = track.curvature[i];
     if (Math.abs(k) < 0.0055) continue;
     const s = k > 0 ? 1 : -1; // board on the outside wall of the corner
@@ -179,10 +187,69 @@ export function buildWorld(track) {
     if (track.tunnel[track.wrap(i)]) continue;
     gantry(i, TX.adTexture(Math.floor(rng() * TX.BRAND_COUNT)));
   }
+  // Jump warnings: a gantry ahead of each kicker and a glowing lip line.
+  const lip = new MeshBuilder();
+  for (const j of track.jumps) {
+    gantry(j.section - 35, TX.bannerTexture(j.gap ? 'GAP AHEAD' : 'JUMP', '#ffd020', '#101014'));
+    for (const k of [1, 3]) {
+      const i = track.wrap(j.section - k), i2 = track.wrap(i + 1);
+      const w = track.width[i] / 2 - 0.5, w2 = track.width[i2] / 2 - 0.5;
+      const a = v(i, -w, 0.07), b = v(i, w, 0.07);
+      const c = v(i, w, 0.07).lerp(v(i2, w2, 0.07), 0.3), d = v(i, -w, 0.07).lerp(v(i2, -w2, 0.07), 0.3);
+      lip.quad(a, b, c, d);
+    }
+  }
+  if (!lip.empty) group.add(lip.build(psxMaterial({ color: 0xffc020, side, glow: 1.2 })));
+
+  // Grandstands along the start straight, with a crowd painted on each tier.
+  const crowd = new MeshBuilder();
+  for (let i = N - 70; i < N - 6; i++) {
+    const ii = track.wrap(i), jj = track.wrap(i + 1);
+    if (track.gap[ii]) continue;
+    for (const sd of [-1, 1]) {
+      for (let t = 0; t < 6; t++) {
+        const l0 = sd * (track.width[ii] / 2 + 7 + t * 2.2), l1 = sd * (track.width[jj] / 2 + 7 + t * 2.2);
+        const h0 = t * 1.7, h1 = h0 + 1.7;
+        const q = [v(ii, l0, h0), v(jj, l1, h0), v(jj, l1, h1), v(ii, l0, h1)];
+        crowd.quad(q[0], q[1], q[2], q[3], [0, 0, 1, 0, 1, 1, 0, 1], [0.9, 0.9, 1, 1]);
+      }
+      if (i % 4 === 0) {
+        place(ii, sd * (track.width[ii] / 2 + 7 + 6.6), 3.5, 13.2, 7, 4.2, 0.45);
+        place(ii, sd * (track.width[ii] / 2 + 13), 14, 0.6, 7, 0.6, 0.5);
+        place(ii, sd * (track.width[ii] / 2 + 10), 17.6, 9, 0.4, 4.4, 0.6);
+      }
+    }
+  }
+  group.add(crowd.build(psxMaterial({ map: TX.crowdTexture(), vertexColors: true, side })));
+
+  // Roadside billboards and footbridges.
+  const boards = new MeshBuilder();
+  for (let k = 0; k < 8; k++) {
+    const i = track.wrap(Math.floor((k + 0.5) * N / 8));
+    if (track.gap[i] || track.tunnel[i]) continue;
+    const sd = k % 2 ? 1 : -1, lat = sd * (track.width[i] / 2 + 16);
+    place(i, lat, 6, 0.8, 12, 0.8, 0.5);
+    const c = track.pointAt(i, lat, 15);
+    const r = track.R[i].clone().multiplyScalar(9), u = new THREE.Vector3(0, 3.5, 0);
+    const f = track.T[i].clone().multiplyScalar(-0.5);
+    boards.quad(c.clone().sub(r).sub(u).add(f), c.clone().add(r).sub(u).add(f), c.clone().add(r).add(u).add(f), c.clone().sub(r).add(u).add(f));
+    place(i, lat, 15, 18.6, 7.6, 0.6, 0.3);
+  }
+  if (!boards.empty) group.add(boards.build(psxMaterial({ map: TX.adTexture(Math.floor(rng() * TX.BRAND_COUNT)), side, glow: 0.6 })));
+  for (const f of [0.3, 0.68]) {
+    const i = track.wrap(Math.floor(f * N));
+    if (track.gap[i] || track.tunnel[i]) continue;
+    const w = track.width[i] / 2;
+    for (const sd of [-1, 1]) place(i, sd * (w + 6), 9, 2.5, 22, 2.5, 0.55);
+    place(i, 0, 19, w * 2 + 16, 2, 4, 0.6);
+    place(i, 0, 21.2, w * 2 + 16, 0.3, 4, 0.8);
+  }
+
   banners.forEach((b) => group.add(b));
 
   const glows = [];
   for (let i = 0; i < N; i += LAMP_EVERY) {
+    if (track.gap[i]) continue;
     if (track.tunnel[i]) continue;
     const s = (i / LAMP_EVERY) % 2 ? 1 : -1;
     const w = track.width[i] / 2 + 2.2;
@@ -192,6 +259,7 @@ export function buildWorld(track) {
   }
   const groundY = track.minY - 26;
   for (let i = 0; i < N; i += 16) {
+    if (track.gap[i]) continue;
     const P = track.P[i];
     const hgt = P.y - 1.5 - groundY;
     if (hgt < 4) continue;
@@ -211,6 +279,7 @@ export function buildWorld(track) {
   if (night) {
     const edge = [];
     for (let i = 0; i < N; i += 3) {
+      if (track.gap[i]) continue;
       if (track.tunnel[i]) continue;
       for (const s of [-1, 1]) edge.push(track.pointAt(i, s * (track.width[i] / 2 + 0.4), WALL_H + 0.5));
     }
@@ -283,6 +352,27 @@ export function buildWorld(track) {
 
   const skyGroup = new THREE.Group();
   skyGroup.add(skyMesh);
+
+  // Drifting cloud layer overhead, and low mist lying in the valleys.
+  const cloudTex = TX.cloudTexture(night);
+  cloudTex.repeat.set(5, 5);
+  const clouds = new THREE.Mesh(new THREE.PlaneGeometry(9000, 9000).rotateX(Math.PI / 2),
+    psxMaterial({ map: cloudTex, transparent: true, alpha: night ? 0.5 : 0.85, fog: false, side, depthWrite: false }));
+  clouds.position.y = 650;
+  clouds.renderOrder = -8.5;
+  clouds.frustumCulled = false;
+  skyGroup.add(clouds);
+  let mist = null;
+  if (def.theme !== 'city') {
+    const mistTex = TX.cloudTexture(false);
+    mistTex.repeat.set(3, 3);
+    mist = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2),
+      psxMaterial({ map: mistTex, transparent: true, alpha: night ? 0.18 : 0.3, side, depthWrite: false, color: theme.fog }));
+    mist.scale.set(size, 1, size);
+    mist.position.set(cx, groundY + 14, cz);
+    mist.renderOrder = 2;
+    group.add(mist);
+  }
   const mtn = new MeshBuilder();
   const mCol = new THREE.Color(theme.mountains);
   const capCol = def.theme === 'alpine' || def.theme === 'arctic' ? new THREE.Color(0xe8f0ff) : mCol.clone().multiplyScalar(1.3);
@@ -330,7 +420,7 @@ export function buildWorld(track) {
   // ---- Themed scenery ----------------------------------------------------
   buildScenery(group, track, def.theme, rng, distToTrack, groundAt, night, cx, cz, size);
 
-  return { group, skyGroup, theme };
+  return { group, skyGroup, theme, clouds, mist };
 }
 
 function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx, cz, size) {

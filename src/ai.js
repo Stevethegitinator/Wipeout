@@ -73,7 +73,9 @@ export class AIPilot {
       let fire = false;
       if (wpn === 'shield' || wpn === 'turbo') {
         fire = wpn === 'turbo' ? Math.abs(tr.curvature[ti]) < 0.004 : this.rng() < 0.02;
-      } else if (wpn === 'mines') {
+      } else if (wpn === 'emp') {
+        fire = ships.some((o) => o !== s && o.pos.distanceTo(s.pos) < 35);
+      } else if (wpn === 'mines' || wpn === 'well') {
         fire = ships.some((o) => o !== s && s.progress - o.progress > 2 && s.progress - o.progress < 25);
       } else {
         fire = ships.some((o) => o !== s && o.progress - s.progress > 2 && o.progress - s.progress < 30);

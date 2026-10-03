@@ -9,6 +9,7 @@ import { EffectComposer } from '../vendor/addons/postprocessing/EffectComposer.j
 import { RenderPass } from '../vendor/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '../vendor/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '../vendor/addons/postprocessing/OutputPass.js';
+import { ShaderPass } from '../vendor/addons/postprocessing/ShaderPass.js';
 import { particleScale } from './particles.js';
 import { buildShipModel } from './shipmodels.js';
 import { drawRaceHUD, text, panel, fmtTime, drawStatBar, teamColor } from './hud.js';
@@ -36,6 +37,33 @@ const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, 
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.45, 0.85);
 composer.addPass(bloom);
+// Speed blur, colour fringing, per-circuit colour grade and vignette.
+const speedPass = new ShaderPass({
+  uniforms: {
+    tDiffuse: { value: null }, uBlur: { value: 0 }, uAberr: { value: 0 }, uSat: { value: 1 }, uContrast: { value: 1 },
+    uTint: { value: new THREE.Vector3(1, 1, 1) }, uVignette: { value: 0.35 },
+  },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform float uBlur, uAberr, uSat, uContrast, uVignette; uniform vec3 uTint;
+    varying vec2 vUv;
+    void main() {
+      vec2 dir = vUv - 0.5; float d = length(dir);
+      float amt = uBlur * 0.03 * smoothstep(0.12, 0.7, d);
+      vec3 c = vec3(0.0);
+      for (int i = 0; i < 8; i++) c += texture2D(tDiffuse, vUv - dir * amt * (float(i) / 7.0)).rgb;
+      c /= 8.0;
+      float ca = uAberr * 0.008 * d;
+      c.r = mix(c.r, texture2D(tDiffuse, vUv + dir * ca).r, step(0.0001, ca));
+      c.b = mix(c.b, texture2D(tDiffuse, vUv - dir * ca).b, step(0.0001, ca));
+      float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+      c = mix(vec3(l), c, uSat);
+      c = max(vec3(0.0), (c - 0.18) * uContrast + 0.18) * uTint;
+      c *= 1.0 - smoothstep(0.45, 0.95, d) * uVignette;
+      gl_FragColor = vec4(c, 1.0);
+    }`,
+});
+composer.addPass(speedPass);
 composer.addPass(new OutputPass());
 
 // Team preview scene for the selection screen.
@@ -91,6 +119,7 @@ function resize() {
     renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = quality > 0;
     bloom.enabled = quality > 0;
+    speedPass.uniforms.uBlur.value = 0;
     scene.traverse((o) => { if (o.material && o.material.needsUpdate !== undefined && o.isMesh) o.material.needsUpdate = true; });
   } else {
     const aspect = Math.max(1, Math.min(2.4, innerWidth / innerHeight));
@@ -489,6 +518,14 @@ function render() {
 }
 
 function renderModern() {
+  const r = game.race;
+  if (r) {
+    const g = r.theme.grade || { tint: [1, 1, 1], sat: 1, contrast: 1 };
+    const u = speedPass.uniforms;
+    u.uBlur.value = game.state === 'race' && quality > 0 ? r.speedFx.blur : 0;
+    u.uAberr.value = game.state === 'race' ? r.speedFx.aberration : 0;
+    u.uSat.value = g.sat; u.uContrast.value = g.contrast; u.uTint.value.set(...g.tint);
+  }
   composer.render();
   if (game.state === 'menu' && game.menu.kind === 'team') {
     const ti = game.menu.fixedTeam ?? game.menu.sel;

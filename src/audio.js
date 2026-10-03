@@ -82,6 +82,7 @@ export class Audio {
       case 'explode': this.noise(0.9, 'lowpass', 2500, 60, 0.8 * v); this.tone('sine', 120, 30, 0.6, 0.5 * v); break;
       case 'lap': [0, 7, 12].forEach((n, i) => this.tone('square', mtof(76 + n), mtof(76 + n), 0.12, 0.12 * v, i * 0.09)); break;
       case 'finish': [0, 4, 7, 12, 16].forEach((n, i) => this.tone('square', mtof(72 + n), mtof(72 + n), 0.2, 0.14 * v, i * 0.1)); break;
+      case 'cannon': this.noise(0.06, 'bandpass', 2500, 900, 0.35 * v); this.tone('square', 220, 90, 0.05, 0.08 * v); break;
       case 'warn': this.tone('square', 1000, 1000, 0.08, 0.1 * v); break;
     }
   }
@@ -113,7 +114,24 @@ export class Audio {
     e.ng.gain.setTargetAtTime(vol * Math.min(0.08, speed / 3000), t, 0.1);
   }
 
+  // Continuous metal-on-rail scrape while the player grinds a barrier.
+  grind(level) {
+    const ctx = this.ctx; if (!ctx) return;
+    if (!this.grindNode) {
+      const n = ctx.createBufferSource(); n.buffer = this.noiseBuf; n.loop = true;
+      const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = 2600; f.Q.value = 2.5;
+      const f2 = ctx.createBiquadFilter(); f2.type = 'peaking'; f2.frequency.value = 5200; f2.gain.value = 10;
+      const g = ctx.createGain(); g.gain.value = 0;
+      n.connect(f).connect(f2).connect(g).connect(this.sfx); n.start();
+      this.grindNode = { n, f, g };
+    }
+    const t = ctx.currentTime;
+    this.grindNode.g.gain.setTargetAtTime(level * 0.45, t, level > 0 ? 0.02 : 0.08);
+    this.grindNode.f.frequency.setTargetAtTime(1800 + level * 2400 + Math.random() * 400, t, 0.03);
+  }
+
   stopEngines() {
+    if (this.grindNode) this.grindNode.g.gain.value = 0;
     for (const e of this.engines.values()) {
       try { e.o1.stop(); e.o2.stop(); e.n.stop(); } catch { /* already stopped */ }
       e.g.disconnect(); e.ng.disconnect();

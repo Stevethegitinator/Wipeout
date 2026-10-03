@@ -30,8 +30,36 @@ export class TrackData {
 
     for (let i = 0; i < N; i++) {
       this.P.push(curve.getPointAt(i / N));
-      this.T.push(curve.getTangentAt(i / N).normalize());
       this.dist[i] = i * this.spacing;
+    }
+
+    // Jumps: a kicker ramp, then either a sharp drop (gap = 0) or a missing
+    // stretch of track to fly over, landing lower down.
+    this.gap = new Uint8Array(N);
+    this.gapEnd = new Int32Array(N).fill(-1);
+    this.jumps = [];
+    const offset = new Float32Array(N);
+    for (const [f, gapLen] of def.jumps || []) {
+      const s = Math.floor(f * N);
+      const RAMP = 14, H = 5, D = 4, G = gapLen || 3, LAND = 30;
+      this.jumps.push({ section: s % N, gap: gapLen, end: (s + G) % N });
+      for (let k = 0; k < RAMP; k++) offset[(s - RAMP + k + N) % N] += H * (1 - Math.cos((Math.PI / 2) * (k / RAMP)));
+      for (let k = 0; k < G; k++) {
+        const i = (s + k) % N;
+        offset[i] += H + (-D - H) * ((k + 1) / G);
+        if (gapLen) { this.gap[i] = 1; this.gapEnd[i] = (s + G + 2) % N; }
+      }
+      for (let k = 0; k < LAND; k++) {
+        const x = k / LAND;
+        offset[(s + G + k) % N] += -D * (1 - x * x * (3 - 2 * x));
+      }
+    }
+    for (let i = 0; i < N; i++) this.P[i].y += offset[i];
+    for (let i = 0; i < N; i++) {
+      // forward tangents so the lip of a kicker launches the craft
+      const t = new THREE.Vector3().subVectors(this.P[(i + 1) % N], this.P[i]);
+      const back = new THREE.Vector3().subVectors(this.P[i], this.P[(i - 1 + N) % N]);
+      this.T.push(t.add(back).normalize());
     }
 
     // Signed horizontal curvature (positive = left turn), smoothed.
@@ -126,6 +154,7 @@ export class TrackData {
     out.h = _v.dot(out.U);
     out.lat = _v.dot(out.R);
     out.tunnel = this.tunnel[i];
+    out.gap = this.gap[i];
     return out;
   }
 

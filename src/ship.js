@@ -103,7 +103,7 @@ export class Ship {
 
     // Align heading to the track plane.
     const U = f.U;
-    const grounded = f.h < 7 && f.h > -4;
+    const grounded = !f.gap && f.h < 7 && f.h > -4;
     if (grounded) this.up.lerp(U, Math.min(1, dt * 10)).normalize();
     else this.up.lerp(_a.set(0, 1, 0), Math.min(1, dt * 0.8)).normalize();
     this.fwd.addScaledVector(this.up, -this.fwd.dot(this.up)).normalize();
@@ -145,7 +145,9 @@ export class Ship {
       const h = f.h;
       const vU = this.vel.dot(U);
       let force = -GRAVITY * 0.9;
-      if (h < HOVER_HEIGHT * 3) force += (HOVER_HEIGHT - h) * 220 - vU * 16;
+      // The hover field only pushes up, so crests and kickers throw the craft into the air.
+      if (h < HOVER_HEIGHT) force += (HOVER_HEIGHT - h) * 220 - vU * 16;
+      else if (h < HOVER_HEIGHT * 1.6) force -= vU * 6;
       this.vel.addScaledVector(U, force * dt);
       // Slopes: downhill speeds you up, uphill slows you down.
       this.vel.y -= GRAVITY * 0.1 * dt;
@@ -163,8 +165,8 @@ export class Ship {
     tr.query(this.pos, this.section, f);
     this.section = f.index;
 
-    // Floor.
-    if (f.h < 0.35 && f.h > -6) {
+    // Floor (none over a gap).
+    if (!f.gap && f.h < 0.35 && f.h > -6) {
       this.pos.addScaledVector(f.U, 0.35 - f.h);
       const vU = this.vel.dot(f.U);
       if (vU < 0) {
@@ -173,30 +175,33 @@ export class Ship {
       }
     }
 
-    // Walls (and tunnel ceiling).
+    // Walls: the craft grinds along the rail instead of bouncing off it.
     this.wallHit = 0;
+    this.grinding = 0;
     const maxLat = f.width / 2 - SHIP_HALF_WIDTH;
-    if (Math.abs(f.lat) > maxLat && f.h < 6) {
+    if (!f.gap && Math.abs(f.lat) > maxLat && f.h < 6) {
       const sign = Math.sign(f.lat);
       this.pos.addScaledVector(f.R, -(f.lat - sign * maxLat));
       const vLat = this.vel.dot(f.R);
+      const spd = Math.max(1, this.speed);
       if (vLat * sign > 0) {
-        const spd = this.speed;
+        // Kill the outward motion; only a square-on hit costs a big chunk of speed.
         const impact = Math.min(1, Math.abs(vLat) / Math.max(20, spd));
-        this.vel.addScaledVector(f.R, -vLat * 1.45);
-        // Scraping costs speed; a square-on hit costs a lot.
-        this.vel.multiplyScalar(1 - (0.1 + impact * 0.55));
-        // Deflect the nose along the wall.
-        const along = Math.sign(this.fwd.dot(f.T)) || 1;
-        _b.copy(f.T).multiplyScalar(along);
-        this.fwd.lerp(_b, 0.25 + impact * 0.3).normalize();
-        this.yawVel *= 0.3;
-        this.wallHit = 0.3 + impact;
-        this.shake = Math.max(this.shake, impact * 0.8);
-        this.events.push({ type: 'wall', power: impact, side: sign });
-      } else {
-        this.wallHit = 0.15;
+        this.vel.addScaledVector(f.R, -vLat);
+        if (impact > 0.35) {
+          this.vel.multiplyScalar(1 - impact * impact * 0.45);
+          this.shake = Math.max(this.shake, impact * 0.7);
+          this.events.push({ type: 'wall', power: impact, side: sign });
+        }
       }
+      // Grinding: steady friction and the nose is steered along the rail.
+      this.vel.multiplyScalar(Math.max(0, 1 - 0.32 * dt));
+      const along = Math.sign(this.fwd.dot(f.T)) || 1;
+      _b.copy(f.T).multiplyScalar(along).addScaledVector(f.R, -sign * 0.08).normalize();
+      this.fwd.lerp(_b, Math.min(1, dt * 4)).normalize();
+      if (this.yawVel * sign < 0) this.yawVel *= 0.5; // can't keep turning into the rail
+      this.grinding = sign;
+      this.wallHit = Math.min(1, spd / 120);
     }
     if (f.tunnel && f.h > 7) {
       this.pos.addScaledVector(f.U, 7 - f.h);
@@ -204,10 +209,11 @@ export class Ship {
       if (vU > 0) this.vel.addScaledVector(f.U, -vU);
     }
 
-    // Fell off the world: respawn on the centreline.
-    if (f.h < -40 || f.h > 120) {
-      this.placeAt(f.index, 0);
-      this.vel.copy(tr.T[f.index]).multiplyScalar(20);
+    // Fell into a gap or off the world: respawn on the far side.
+    if ((f.gap && f.h < -22) || f.h < -40 || f.h > 120) {
+      const at = f.gap ? tr.gapEnd[f.index] : f.index;
+      this.placeAt(at, 0);
+      this.vel.copy(tr.T[tr.wrap(at)]).multiplyScalar(25);
       this.events.push({ type: 'respawn' });
     }
 

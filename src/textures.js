@@ -213,3 +213,50 @@ export function chevronTexture(color) {
   x.fillRect(0, 0, 64, 2); x.fillRect(0, 30, 64, 2);
   return toTexture(c, false);
 }
+
+export function crowdTexture() {
+  const [c, x] = canvas(64, 16);
+  const rng = makeRng(42);
+  x.fillStyle = '#20222a'; x.fillRect(0, 0, 64, 16);
+  const cols = ['#e8c8a0', '#c08060', '#f0f0f0', '#e04040', '#4080e0', '#f0d040', '#40c060', '#202020'];
+  for (let i = 0; i < 90; i++) {
+    x.fillStyle = cols[Math.floor(rng() * cols.length)];
+    const px = rng() * 64, py = 3 + rng() * 10;
+    x.fillRect(px, py, 1.6, 2.4);
+    x.fillStyle = '#e8c8a0'; x.fillRect(px + 0.2, py - 1.2, 1.2, 1.2);
+  }
+  x.fillStyle = '#50545e'; x.fillRect(0, 14, 64, 2);
+  return toTexture(c);
+}
+
+// Tileable soft cloud noise (value noise, several octaves) on transparency.
+export function cloudTexture(dark) {
+  const S = 128;
+  const c = document.createElement('canvas'); c.width = c.height = S;
+  const x = c.getContext('2d');
+  const rng = makeRng(dark ? 99 : 17);
+  const grid = (n) => Array.from({ length: n * n }, () => rng());
+  const octs = [[4, 0.5], [8, 0.25], [16, 0.15], [32, 0.1]].map(([n, a]) => ({ n, a, g: grid(n) }));
+  const smooth = (t) => t * t * (3 - 2 * t);
+  const sample = (o, u, v) => {
+    const fx = u * o.n, fy = v * o.n, x0 = Math.floor(fx), y0 = Math.floor(fy), tx = smooth(fx - x0), ty = smooth(fy - y0);
+    const g = (i, j) => o.g[((j % o.n) * o.n) + (i % o.n)];
+    const a = g(x0, y0) + (g(x0 + 1, y0) - g(x0, y0)) * tx, b = g(x0, y0 + 1) + (g(x0 + 1, y0 + 1) - g(x0, y0 + 1)) * tx;
+    return a + (b - a) * ty;
+  };
+  const img = x.createImageData(S, S);
+  for (let j = 0; j < S; j++) for (let i = 0; i < S; i++) {
+    let n = 0;
+    for (const o of octs) n += sample(o, i / S, j / S) * o.a;
+    const cover = Math.max(0, Math.min(1, (n - 0.5) * 3.2));
+    const k = (j * S + i) * 4;
+    const shade = dark ? 70 + n * 60 : 225 + n * 30;
+    img.data[k] = shade; img.data[k + 1] = shade; img.data[k + 2] = shade + (dark ? 20 : 0);
+    img.data[k + 3] = cover * 255;
+  }
+  x.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}

@@ -10,6 +10,8 @@ import { Particles } from './particles.js';
 import { buildShipModel } from './shipmodels.js';
 import { psxMaterial, psxUniforms, renderStyle, setOpacity } from './psx.js';
 import { glowTexture } from './textures.js';
+import { Trail, SpeedLines, Smoke, Debris, shieldMaterial } from './effects.js';
+import { Lensflare, LensflareElement } from '../vendor/addons/objects/Lensflare.js';
 
 const _v = new THREE.Vector3();
 const _w = new THREE.Vector3();
@@ -54,9 +56,12 @@ export class Race {
     psxUniforms.uFogNear.value = this.theme.fogNear;
     psxUniforms.uFogFar.value = this.theme.fogFar;
     scene.background = new THREE.Color(this.theme.fog);
+    this.glowTex = glowTexture();
+    this.fx = { trails: new THREE.Group(), speed: new SpeedLines(), smoke: new Smoke(240, this.glowTex), debris: new Debris() };
+    this.root.add(this.fx.trails, this.fx.speed.lines, this.fx.smoke.mesh, this.fx.debris.group);
+    this.speedFx = { blur: 0, aberration: 0 };
     if (renderStyle.modern) this.setupLighting(renderer);
     else scene.fog = null;
-    this.glowTex = glowTexture();
 
     // Entrants: every pilot of every team. Grid order may be given (championship).
     const entrants = [];
@@ -126,6 +131,28 @@ export class Race {
     this.root.add(sun, sun.target);
     this.sun = sun;
     this.sunDir = new THREE.Vector3(0.45, 1, 0.3).normalize();
+    // Visible sun (or moon) with lens flare, placed in the camera-following sky group.
+    const disc = new THREE.Sprite(new THREE.SpriteMaterial({
+      map: this.glowTex, color: night ? 0xc8d8ff : 0xfff4d8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
+    }));
+    const skyDir = new THREE.Vector3(this.sunDir.x, 0.22, this.sunDir.z).normalize();
+    disc.position.copy(skyDir).multiplyScalar(3400);
+    disc.scale.setScalar(night ? 260 : 520);
+    disc.renderOrder = -9;
+    this.skyGroup.add(disc);
+    if (!night) {
+      const flare = new Lensflare();
+      flare.addElement(new LensflareElement(this.glowTex, 380, 0, new THREE.Color(0xfff0d0)));
+      for (const [size, dist, c] of [[60, 0.4, 0xffd080], [90, 0.6, 0x80c0ff], [40, 0.75, 0xff9060], [130, 0.95, 0xa0ffd0]]) {
+        flare.addElement(new LensflareElement(this.glowTex, size, dist, new THREE.Color(c).multiplyScalar(0.35)));
+      }
+      flare.position.copy(skyDir).multiplyScalar(3300);
+      this.skyGroup.add(flare);
+    } else {
+      // At night a light rides with the player so lamps and glows catch the hull.
+      this.carLight = new THREE.PointLight(0xffe0b0, 0, 40, 1.5);
+      this.root.add(this.carLight);
+    }
     if (renderer) {
       const pm = new THREE.PMREMGenerator(renderer);
       const envScene = new THREE.Scene();
@@ -138,12 +165,15 @@ export class Race {
   }
 
   attachVisual(ship) {
-    const { mesh, engines } = buildShipModel(ship.team);
+    const number = ship.entrant ? ship.entrant.ti * 2 + ship.entrant.pi + 1 : 1;
+    const { mesh, engines } = buildShipModel(ship.team, number);
     const g = new THREE.Group();
     g.add(mesh);
     ship.model = mesh;
     ship.engines = engines;
-    const shield = new THREE.Mesh(new THREE.IcosahedronGeometry(3.1, 1), psxMaterial({ color: 0x40ff9a, additive: true, alpha: 0.5, side: THREE.DoubleSide }));
+    const shield = new THREE.Mesh(new THREE.IcosahedronGeometry(3.1, 3),
+      renderStyle.modern ? shieldMaterial() : psxMaterial({ color: 0x40ff9a, additive: true, alpha: 0.5, side: THREE.DoubleSide }));
+    shield.scale.set(1, 0.6, 1.25);
     shield.visible = false;
     g.add(shield);
     ship.shieldMesh = shield;
@@ -159,6 +189,11 @@ export class Race {
     ship.shadow = sh;
     ship.visual = g;
     ship.bob = Math.random() * 10;
+    ship.trails = renderStyle.modern ? engines.map(() => {
+      const t = new Trail(new THREE.Color(ship.team.secondary).lerp(new THREE.Color(0xffa060), 0.5), 24, 0.13, 16);
+      this.fx.trails.add(t.mesh);
+      return t;
+    }) : [];
     this.root.add(g);
   }
 
@@ -191,9 +226,20 @@ export class Race {
     this.messages.push({ text, time: dur, color });
   }
 
+  flashAt(pos, color) {
+    this.particles.burst(pos, color, 60, 45, 3, 0.6);
+  }
+
   explode(pos, kind, ship) {
+    if (kind === 'round') {
+      this.particles.burst(pos, 0xffe08a, 6, 20, 1.2, 0.25);
+      if (ship === this.player) this.camShake = Math.max(this.camShake, 0.2);
+      return;
+    }
     const col = kind === 'bolt' ? 0x9a7aff : kind === 'shock' ? 0x40d8ff : 0xffa040;
     this.particles.burst(pos, col, 40, 30, 3, 0.7);
+    this.fx.smoke.burst(pos, 10, 10, 5);
+    if (kind !== 'shock' && kind !== 'bolt') this.fx.debris.burst(pos, 8, ship ? ship.vel : null);
     this.particles.burst(pos, 0xffffff, 12, 15, 2, 0.4);
     const d = pos.distanceTo(this.camera.position);
     this.audio.play('explode', Math.max(0, 1 - d / 400));
@@ -201,6 +247,11 @@ export class Race {
   }
 
   onHit(attacker, victim, kind) {
+    if (kind === 'round') {
+      if (victim === this.player) this.flash = Math.max(this.flash, 0.15);
+      return;
+    }
+    if (kind === 'well' && victim === this.player) { this.message('GRAVITY WELL', 1, '#c080ff'); return; }
     if (victim === this.player) this.message('HIT!', 1, '#ff4040');
     else if (attacker === this.player) this.message(`${victim.pilot.split(' ')[1]} HIT`, 1.2, '#ffd040');
   }
@@ -289,6 +340,16 @@ export class Race {
 
     this.updateVisuals(dt);
     this.particles.update(dt);
+    this.fx.smoke.update(dt, this.camera);
+    this.fx.debris.update(dt);
+    if (this.world.clouds) this.world.clouds.material.map && this.world.clouds.material.map.offset.set(this.time * 0.002, this.time * 0.001);
+    if (this.carLight && this.player) {
+      // brighter under the trackside lamps
+      const i = this.player.section % 24;
+      const near = Math.max(0, 1 - Math.min(i, 24 - i) / 5);
+      this.carLight.position.copy(this.player.pos).addScaledVector(this.player.up, 6);
+      this.carLight.intensity = 30 + near * 120;
+    }
     this.updateCamera(dt, input);
     for (const m of this.messages) m.time -= dt;
     this.messages = this.messages.filter((m) => m.time > 0);
@@ -320,11 +381,12 @@ export class Race {
     for (const e of s.events) {
       switch (e.type) {
         case 'wall':
-          if (e.power > 0.08) this.sound('wall', s, Math.min(1, e.power * 1.5));
-          else if (isP) this.audio.play('scrape', 0.6);
-          _v.copy(s.pos).addScaledVector(s.frame.R, e.side * 1.4);
-          for (let k = 0; k < 6; k++) this.particles.emit(_v, _w.set((Math.random() - 0.5) * 20, Math.random() * 12, (Math.random() - 0.5) * 20).addScaledVector(s.vel, 0.6), 0xffd060, 1.2, 0.3, 3);
-          if (isP) this.camShake = Math.max(this.camShake, e.power * 0.6);
+          this.sound('wall', s, Math.min(1, e.power * 1.2));
+          if (isP) this.camShake = Math.max(this.camShake, e.power * 0.5);
+          break;
+        case 'respawn':
+          s.respawned = true;
+          if (isP) { this.message('RESPAWN', 1.2, '#ff8040'); this.flash = 0.4; }
           break;
         case 'speedpad':
           if (isP) this.audio.play('speedpad');
@@ -367,6 +429,18 @@ export class Race {
 
   updateVisuals(dt) {
     for (const s of this.ships) {
+      // Rail grinding: a shower of sparks from the contact point.
+      if (s.grinding) {
+        const spd = s.speed;
+        _v.copy(s.pos).addScaledVector(s.frame.R, s.grinding * 1.5).addScaledVector(s.frame.U, -0.2);
+        const n = Math.min(6, 1 + Math.floor(spd / 25));
+        for (let k = 0; k < n; k++) {
+          _w.copy(s.vel).multiplyScalar(0.55 + Math.random() * 0.3)
+            .addScaledVector(s.frame.R, -s.grinding * Math.random() * 8)
+            .add(_right.set((Math.random() - 0.5) * 10, Math.random() * 10, (Math.random() - 0.5) * 10));
+          this.particles.emit(_v, _w, Math.random() < 0.3 ? 0xffffff : 0xffb040, 0.7 + Math.random() * 0.6, 0.25 + Math.random() * 0.25, 1.5);
+        }
+      }
       s.bob += dt * 3;
       _right.crossVectors(s.fwd, s.up).normalize();
       _back.copy(s.fwd).negate();
@@ -398,8 +472,21 @@ export class Race {
       // exhaust
       const thrusting = s.input.thrust && !s.finished ? 1 : 0.4;
       const col = s.boostTime > 0 ? 0x80e0ff : thrusting > 0.5 ? 0xff8a3a : 0x803010;
-      const gs = (s.boostTime > 0 ? 1.1 : 0.4 + thrusting * 0.3) * (0.9 + Math.random() * 0.2);
+      const gs = (s.boostTime > 0 ? 0.8 : 0.25 + thrusting * 0.2) * (0.9 + Math.random() * 0.2);
       for (const sp of s.glows) { sp.scale.setScalar(gs); sp.material.color.setHex(s.boostTime > 0 ? 0x60d0ff : 0xff9040); }
+      // light trails from each nozzle, brighter with speed and boost
+      if (s.trails.length) {
+        const side = _right.crossVectors(s.fwd, s.up).normalize();
+        const k = Math.min(1, s.speed / 120) * (s.boostTime > 0 ? 1.8 : 1);
+        s.engines.forEach((e, i) => {
+          _v.copy(e).applyQuaternion(s.visual.quaternion).add(s.visual.position);
+          s.trails[i].update(_v, side, k * 0.45);
+        });
+        if (s.respawned) { s.trails.forEach((t) => t.reset()); s.respawned = false; }
+      }
+      // shield shimmer
+      const su = s.shieldMesh.material.uniforms;
+      if (su && su.uFade) { su.uTime.value += dt; su.uFade.value = Math.min(1, s.shieldTime); }
       if (renderStyle.modern && Math.random() < 0.5) continue; // glow sprites carry most of the exhaust look
       for (const e of s.engines) {
         _v.copy(e).applyQuaternion(s.visual.quaternion).add(s.visual.position);
@@ -407,6 +494,7 @@ export class Race {
         this.particles.emit(_v, _w, col, (s.boostTime > 0 ? 1.8 : 1.2) * (0.6 + thrusting * 0.5), 0.18, 2);
       }
     }
+    if (this.player) this.audio.grind(this.player.grinding ? Math.min(1, this.player.speed / 100) : 0);
     // Engine audio: player loud, rivals by distance.
     for (const s of this.ships) {
       let vol;
@@ -488,6 +576,12 @@ export class Race {
     for (const o of this.ships) if (o !== s) o.visual.visible = true;
     this.skyGroup.position.copy(cam.position);
     this.followSun(s.pos);
+
+    // Sense of speed: streaks, radial blur and colour fringing ramp up near top speed.
+    const fast = Math.max(0, Math.min(1, (spd / s.topSpeed - 0.55) / 0.5)) + (s.boostTime > 0 ? 0.6 : 0);
+    if (renderStyle.modern) this.fx.speed.update(dt, cam, s.fwd, Math.min(1.3, fast));
+    this.speedFx.blur += (Math.min(1.3, fast) - this.speedFx.blur) * Math.min(1, dt * 4);
+    this.speedFx.aberration += ((s.boostTime > 0 ? 1 : 0) + this.camShake * 0.8 - this.speedFx.aberration) * Math.min(1, dt * 6);
   }
 
   // Keep the shadow-casting sun centred on the action.

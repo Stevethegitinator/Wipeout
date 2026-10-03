@@ -32,7 +32,11 @@ airbrake to swing the nose round tight corners.
 ## What's in it
 
 - **Handling:** anti-gravity hover physics with slide, inertia and
-  airbrakes. Hitting a wall costs a lot of speed, so clean lines matter.
+  airbrakes. Touch a barrier and you grind along the rail in a shower of
+  sparks, bleeding speed; only a square-on hit costs a big chunk.
+- **Jumps and gaps:** kicker ramps launch you into the air, and some leap
+  over open gaps in the track. Arrive too slowly and you fall and respawn on
+  the far side, well off the pace. Hold nose-up in the air to float further.
 - **Four circuits**, each with its own look: Cobalt Ridge (alpine), Neon
   Basin (night city), Sable Dunes (desert sunset) and Aurora Rift (arctic
   night). They have banked corners, hills, tunnels, speed pads and weapon
@@ -41,13 +45,19 @@ airbrake to swing the nose round tight corners.
   speed, thrust and handling.
 - **Two speed classes**, plus Single Race, Time Trial (5 laps, saved
   records) and Championship (finish in the top 3 to advance, 3 attempts).
-- **Weapons:** rockets, homing missile, mines, shockwave, E-bolt (disrupts
-  the target's systems), shield and turbo.
+- **Eleven weapons:** rockets, homing missile, mines, shockwave, E-bolt
+  (disrupts the target's systems), autocannon, plasma lance, EMP burst (hits
+  everyone near you), gravity well (a trap that drags rivals in), shield and
+  turbo.
 - **AI rivals** that follow a racing line, dodge each other and use
   weapons.
 - **Modern graphics (default):** full-resolution anti-aliased rendering,
   sun lighting with real-time shadows, sky reflections on the craft, bloom
-  on glowing elements and filmic tone mapping. Glowing edge strips and
+  on glowing elements and filmic tone mapping. Detailed craft with glass
+  canopies, glowing nozzles, light trails and race numbers. Speed blur and
+  streaks near top speed, a sun with lens flare, drifting clouds, valley
+  mist, grandstands, billboards, smoke and debris from explosions, and a
+  colour grade for each circuit. Glowing edge strips and
   yellow chevron boards on corners make the track easy to read at speed.
   Quality scales down automatically if the frame rate drops.
 - **Retro 32-bit mode** (Options → Graphics): 240p output, vertex wobble,

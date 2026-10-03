@@ -21,18 +21,19 @@ for (const def of TRACKS) {
     const ai = new AIPilot(s, 1, () => 0.5);
     s.placeAt(tr.N - 4, 0);
     const dt = 1 / 120;
-    let t = 0, walls = 0, maxSpd = 0;
+    let t = 0, walls = 0, maxSpd = 0, falls = 0, air = 0;
     while (s.lap < 3 && t < 400) {
       ai.update(dt, [s], t);
       s.update(dt, t, true);
-      for (const e of s.events) if (e.type === 'wall' && e.power > 0.05) walls++;
+      for (const e of s.events) { if (e.type === 'wall') walls++; if (e.type === 'respawn') falls++; }
+      if (s.airborne) air += dt;
       s.events.length = 0;
       maxSpd = Math.max(maxSpd, s.speed);
       t += dt;
     }
-    const ok = s.lap >= 3;
+    const ok = s.lap >= 3 && falls === 0;
     if (!ok) failed = true;
-    rows.push(`${team.id.padEnd(8)} ${ok ? 'OK ' : 'DNF'} laps=${s.lapTimes.map((x) => x.toFixed(1)).join('/')} walls=${walls} vmax=${maxSpd.toFixed(0)}${ok ? '' : ' stuck@' + s.section}`);
+    rows.push(`${team.id.padEnd(8)} ${ok ? 'OK ' : 'DNF'} laps=${s.lapTimes.map((x) => x.toFixed(1)).join('/')} walls=${walls} falls=${falls} air=${air.toFixed(1)}s vmax=${maxSpd.toFixed(0)}${ok ? '' : ' stuck@' + s.section}`);
   }
   console.log(`${def.name} len=${tr.length.toFixed(0)} N=${tr.N} minGap=${minGap.toFixed(0)}`);
   rows.forEach((r) => console.log('  ' + r));
