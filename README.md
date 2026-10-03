@@ -61,6 +61,18 @@ airbrake to swing the nose round tight corners.
   colour grade for each circuit. Glowing edge strips and
   yellow chevron boards on corners make the track easy to read at speed.
   Quality scales down automatically if the frame rate drops.
+- **Graphics quality** (Options → Quality): Low, Medium, High (default) or
+  Ultra. High and Ultra add mirror reflections on the road, ambient
+  occlusion, real lamp lighting at night and denser scenery. Ultra adds
+  bigger shadow maps and up to 8x anti-aliasing.
+- **Weather** (Options → Weather): rain with a wet, reflective road,
+  lightning and spray on Neon Basin; snow on Cobalt Ridge; a sandstorm on
+  Sable Dunes; ice crystals on Aurora Rift.
+- **Living scenery:** waving team flags, a bobbing crowd, city traffic,
+  sweeping searchlights, and craft with vents, panel seams and airbrake
+  flaps that lift when you brake.
+- **Lighting:** photographed real-world environment maps (Poly Haven, CC0)
+  light and reflect on everything; see `assets/CREDITS.md`.
 - **Retro 32-bit mode** (Options → Graphics): 240p output, vertex wobble,
   affine texture warping, vertex lighting and 15-bit colour dithering.
 - **Procedural audio:** synthesised engines and effects, plus a generated

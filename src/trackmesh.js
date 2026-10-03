@@ -226,7 +226,32 @@ export function buildWorld(track) {
       }
     }
   }
-  group.add(crowd.build(psxMaterial({ map: TX.crowdTexture(), vertexColors: true, side })));
+  const crowdMesh = crowd.build(psxMaterial({ map: TX.crowdTexture(), vertexColors: true, side }));
+  group.add(crowdMesh);
+
+  // Flags on poles behind the grandstands, in the four team colours.
+  const flags = [];
+  if (renderStyle.modern) {
+    const teamCols = [0xd8342c, 0x1f5fd6, 0x2fae5a, 0x7a2fc8];
+    const flagGeo = () => new THREE.PlaneGeometry(6, 3.6, 12, 4).translate(3, 0, 0);
+    let n = 0;
+    for (let i = N - 66; i < N - 6; i += 10) {
+      const ii = track.wrap(i);
+      for (const sd of [-1, 1]) {
+        const lat = sd * (track.width[ii] / 2 + 21);
+        place(ii, lat, 9, 0.35, 18, 0.35, 0.6);
+        const mat = new THREE.MeshStandardMaterial({ color: teamCols[n++ % 4], side: THREE.DoubleSide, roughness: 0.8 });
+        const flag = new THREE.Mesh(flagGeo(), mat);
+        flag.position.copy(track.pointAt(ii, lat, 16));
+        flag.rotation.y = Math.atan2(track.T[ii].x, track.T[ii].z) + Math.PI;
+        flag.userData.base = flag.geometry.attributes.position.array.slice();
+        flag.userData.phase = n * 1.7;
+        flag.castShadow = true;
+        group.add(flag);
+        flags.push(flag);
+      }
+    }
+  }
 
   // Roadside billboards and footbridges.
   const boards = new MeshBuilder();
@@ -424,12 +449,13 @@ export function buildWorld(track) {
   }
 
   // ---- Themed scenery ----------------------------------------------------
-  buildScenery(group, track, def.theme, rng, distToTrack, groundAt, night, cx, cz, size);
+  const life = buildScenery(group, track, def.theme, rng, distToTrack, groundAt, night, cx, cz, size);
 
-  return { group, skyGroup, theme, clouds, mist, roads, wet };
+  return { group, skyGroup, theme, clouds, mist, roads, wet, flags, crowd: crowdMesh, lamps: glows, life };
 }
 
 function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx, cz, size) {
+  const density = renderStyle.modern ? [0.6, 1, 1.5, 2][renderStyle.quality] : 1;
   const lit = new MeshBuilder();
   const win = new MeshBuilder();
   const m = new THREE.Matrix4();
@@ -447,7 +473,7 @@ function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx
   const col = (hex, k = 1) => new THREE.Color(hex).multiplyScalar(k);
 
   if (theme === 'alpine') {
-    for (let k = 0; k < 520; k++) {
+    for (let k = 0; k < 520 * density; k++) {
       const p = pick(30, 700); if (!p) continue;
       const [x, z] = p; const y = groundAt(x, z); const s = 0.7 + rng() * 0.8;
       m.makeScale(1.2 * s, 5 * s, 1.2 * s).setPosition(x, y + 2.5 * s, z);
@@ -458,7 +484,7 @@ function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx
         lit.addGeometry(cone, m, col(t === 2 ? 0xdde8ee : 0x2f5a34, 0.9 + rng() * 0.2));
       }
     }
-    for (let k = 0; k < 60; k++) {
+    for (let k = 0; k < 60 * density; k++) {
       const p = pick(40, 800); if (!p) continue;
       const [x, z] = p; const s = 6 + rng() * 14;
       const g = new THREE.DodecahedronGeometry(1, 0);
@@ -466,7 +492,7 @@ function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx
       lit.addGeometry(g, m, col(0x7a7a80));
     }
   } else if (theme === 'city') {
-    for (let k = 0; k < 220; k++) {
+    for (let k = 0; k < 220 * density; k++) {
       const p = pick(45, 900); if (!p) continue;
       const [x, z] = p; const d = distToTrack(x, z);
       const w = 20 + rng() * 40, dpt = 20 + rng() * 40, h = 30 + rng() * (d > 200 ? 260 : 110);
@@ -482,7 +508,7 @@ function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx
       }
     }
   } else if (theme === 'desert') {
-    for (let k = 0; k < 70; k++) {
+    for (let k = 0; k < 70 * density; k++) {
       const p = pick(50, 900); if (!p) continue;
       const [x, z] = p; const r = 20 + rng() * 50, h = 30 + rng() * 90;
       const y = groundAt(x, z);
@@ -491,7 +517,7 @@ function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx
         lit.addGeometry(cyl, m, col(t % 2 ? 0xb8683e : 0xa0552e));
       }
     }
-    for (let k = 0; k < 160; k++) {
+    for (let k = 0; k < 160 * density; k++) {
       const p = pick(25, 600); if (!p) continue;
       const [x, z] = p; const s = 2 + rng() * 6;
       m.makeRotationY(rng() * 6).scale(new THREE.Vector3(s, s * 0.6, s)).setPosition(x, groundAt(x, z), z);
@@ -499,7 +525,7 @@ function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx
     }
   } else if (theme === 'arctic') {
     const shard = new THREE.ConeGeometry(1, 1, 4, 1);
-    for (let k = 0; k < 260; k++) {
+    for (let k = 0; k < 260 * density; k++) {
       const p = pick(30, 800); if (!p) continue;
       const [x, z] = p; const s = 4 + rng() * 14, h = s * (2 + rng() * 3);
       m.makeRotationFromEuler(new THREE.Euler((rng() - 0.5) * 0.5, rng() * 6, (rng() - 0.5) * 0.5))
@@ -509,4 +535,52 @@ function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx
   }
   if (!lit.empty) group.add(lit.build(psxMaterial({ vertexColors: true, lit: true, side: THREE.DoubleSide }), true));
   if (!win.empty) group.add(win.build(psxMaterial({ map: TX.windowTexture(night), vertexColors: true, glow: night ? 0.9 : 0, rough: 0.3, metal: 0.4 })));
+
+  // ---- Moving life: city traffic and sweeping searchlights ----------------
+  const life = { traffic: null, beams: [] };
+  if (!renderStyle.modern) return life;
+  if (theme === 'city') {
+    const lanes = [];
+    for (let k = 0; k < 8; k++) {
+      const a = rng() * Math.PI, len = size * 0.7;
+      const ox = cx + (rng() - 0.5) * size * 0.4, oz = cz + (rng() - 0.5) * size * 0.4;
+      lanes.push({ o: new THREE.Vector3(ox, 0, oz), d: new THREE.Vector3(Math.cos(a), 0, Math.sin(a)), len });
+    }
+    const perLane = Math.round(30 * density);
+    const count = lanes.length * perLane;
+    const car = new THREE.InstancedMesh(new THREE.BoxGeometry(2.2, 1.4, 4.6), new THREE.MeshStandardMaterial({ color: 0x202028, roughness: 0.4, metalness: 0.6 }), count);
+    const lights = new THREE.InstancedMesh(new THREE.BoxGeometry(2.0, 0.4, 4.9), new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false }), count);
+    const cars = [];
+    for (let l = 0; l < lanes.length; l++) for (let k = 0; k < perLane; k++) {
+      const dir = k % 2 ? 1 : -1;
+      cars.push({ lane: lanes[l], t: rng(), speed: (0.012 + rng() * 0.01) * dir, side: dir * 2.2 });
+      lights.setColorAt(cars.length - 1, new THREE.Color(dir > 0 ? 0xfff2c0 : 0xff2a20).multiplyScalar(3));
+    }
+    car.frustumCulled = lights.frustumCulled = false;
+    group.add(car, lights);
+    life.traffic = { car, lights, cars, groundAt };
+  }
+  if (theme === 'city' || theme === 'arctic') {
+    // Searchlight beams: open cones fading from base to tip.
+    const geo = new THREE.CylinderGeometry(30, 3, 900, 16, 1, true).translate(0, 450, 0);
+    const col = [];
+    for (let i = 0; i < geo.attributes.position.count; i++) {
+      const k = geo.attributes.position.getY(i) < 10 ? 0.35 : 0;
+      col.push(k, k, k);
+    }
+    geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+    for (let k = 0; k < 6; k++) {
+      const p = pick(120, 900); if (!p) continue;
+      const beam = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+        color: theme === 'city' ? 0xb0d0ff : 0x80ffd0, vertexColors: true, transparent: true, blending: THREE.AdditiveBlending,
+        depthWrite: false, side: THREE.DoubleSide, fog: false, toneMapped: false,
+      }));
+      beam.position.set(p[0], groundAt(p[0], p[1]), p[1]);
+      beam.userData.phase = rng() * 10;
+      beam.frustumCulled = false;
+      group.add(beam);
+      life.beams.push(beam);
+    }
+  }
+  return life;
 }

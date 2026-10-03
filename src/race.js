@@ -82,6 +82,17 @@ export class Race {
     this.speedFx = { blur: 0, aberration: 0 };
     if (renderStyle.modern) this.setupLighting(renderer);
     else scene.fog = null;
+    // Night circuits: a pool of real lights hops between the trackside lamps
+    // nearest the action, so lamps light up the road and passing craft.
+    this.lampLights = [];
+    if (renderStyle.modern && this.theme.night && world.lamps && world.lamps.length) {
+      const n = [0, 2, 4, 8][renderStyle.quality];
+      for (let k = 0; k < n; k++) {
+        const l = new THREE.PointLight(0xffe2b0, 0, 55, 1.6);
+        this.root.add(l);
+        this.lampLights.push(l);
+      }
+    }
     // Mirror-image reflections on the road at High and Ultra.
     if (renderStyle.modern && renderStyle.quality >= 2 && world.roads) {
       this.reflection = new TrackReflection(renderStyle.quality >= 3 ? 0.6 : 0.4);
@@ -222,7 +233,8 @@ export class Race {
 
   attachVisual(ship) {
     const number = ship.entrant ? ship.entrant.ti * 2 + ship.entrant.pi + 1 : 1;
-    const { mesh, engines } = buildShipModel(ship.team, number);
+    const { mesh, engines, flaps } = buildShipModel(ship.team, number);
+    ship.flaps = flaps;
     const g = new THREE.Group();
     g.add(mesh);
     ship.model = mesh;
@@ -399,6 +411,7 @@ export class Race {
     this.updateVisuals(dt);
     this.particles.update(dt);
     this.fx.smoke.update(dt, this.camera);
+    this.updateLife(dt);
     if (this.weather) {
       this.camVel.subVectors(this.camera.position, this.lastCam).multiplyScalar(1 / Math.max(dt, 1e-3));
       if (this.camVel.lengthSq() > 1e6) this.camVel.set(0, 0, 0); // camera cut
@@ -528,6 +541,12 @@ export class Race {
       s.visual.quaternion.multiply(_qq);
       s.visual.position.copy(s.pos).addScaledVector(up, Math.sin(s.bob) * 0.08 - 0.2);
       if (s.spinTime > 0) s.model.rotation.z += dt * 18; else s.model.rotation.z *= 0.8;
+      // airbrake flaps lift on the side being braked
+      if (s.flaps && s.flaps.length === 2) {
+        const tl = s.input.brakeL ? -0.9 : 0, tr = s.input.brakeR ? -0.9 : 0;
+        s.flaps[0].rotation.x += (tl - s.flaps[0].rotation.x) * Math.min(1, dt * 12);
+        s.flaps[1].rotation.x += (tr - s.flaps[1].rotation.x) * Math.min(1, dt * 12);
+      }
 
       s.shieldMesh.visible = s.shieldTime > 0 && (s.shieldTime > 1 || Math.floor(s.shieldTime * 10) % 2 === 0);
 
@@ -658,6 +677,59 @@ export class Race {
     if (renderStyle.modern) this.fx.speed.update(dt, cam, s.fwd, Math.min(1.3, fast));
     this.speedFx.blur += (Math.min(1.3, fast) - this.speedFx.blur) * Math.min(1, dt * 4);
     this.speedFx.aberration += ((s.boostTime > 0 ? 1 : 0) + this.camShake * 0.8 - this.speedFx.aberration) * Math.min(1, dt * 6);
+  }
+
+  // Flags, crowds, traffic, searchlights and lamp lights.
+  updateLife(dt) {
+    const w = this.world, t = this.time + (this.lifeClock = (this.lifeClock || 0) + dt);
+    for (const f of w.flags || []) {
+      const pos = f.geometry.attributes.position, base = f.userData.base;
+      for (let i = 0; i < pos.count; i++) {
+        const x = base[i * 3];
+        const k = x / 6; // 0 at the pole, 1 at the free edge
+        pos.array[i * 3 + 2] = base[i * 3 + 2] + Math.sin(x * 0.9 - t * 7 + f.userData.phase) * 0.6 * k;
+        pos.array[i * 3 + 1] = base[i * 3 + 1] - k * k * 0.4 + Math.sin(x * 1.3 - t * 5) * 0.12 * k;
+      }
+      pos.needsUpdate = true;
+      f.geometry.computeVertexNormals();
+    }
+    if (w.crowd && w.crowd.material.map) {
+      // crowd bobs and cheers, more when a craft is close by
+      w.crowd.material.map.offset.y = Math.abs(Math.sin(t * 7)) * 0.035;
+    }
+    const life = w.life;
+    if (life && life.traffic) {
+      const { car, lights, cars, groundAt } = life.traffic;
+      const m = new THREE.Matrix4(), q = new THREE.Quaternion(), sc = new THREE.Vector3(1, 1, 1), p = new THREE.Vector3();
+      cars.forEach((c, i) => {
+        c.t = (c.t + c.speed * dt + 1) % 1;
+        const L = c.lane;
+        p.copy(L.o).addScaledVector(L.d, (c.t - 0.5) * L.len);
+        p.x += -L.d.z * c.side; p.z += L.d.x * c.side;
+        p.y = groundAt(p.x, p.z) + 0.8;
+        q.setFromAxisAngle(_v.set(0, 1, 0), Math.atan2(L.d.x, L.d.z) + (c.speed < 0 ? Math.PI : 0));
+        m.compose(p, q, sc);
+        car.setMatrixAt(i, m);
+        lights.setMatrixAt(i, m);
+      });
+      car.instanceMatrix.needsUpdate = lights.instanceMatrix.needsUpdate = true;
+    }
+    if (life) for (const b of life.beams) {
+      const ph = b.userData.phase;
+      b.rotation.set(Math.sin(t * 0.25 + ph) * 0.45, 0, Math.cos(t * 0.31 + ph * 1.3) * 0.45);
+    }
+    if (this.lampLights.length) {
+      const s = this.player || (this.attract && this.attract.target) || this.ships[0];
+      const near = w.lamps
+        .map((p) => ({ p, d: p.distanceToSquared(s.pos) - p.clone().sub(s.pos).dot(s.fwd) * 30 }))
+        .sort((a, b) => a.d - b.d);
+      this.lampLights.forEach((l, k) => {
+        const n = near[k];
+        if (!n) { l.intensity = 0; return; }
+        l.position.copy(n.p);
+        l.intensity = 320;
+      });
+    }
   }
 
   // Render the road reflection for the craft the camera is following.

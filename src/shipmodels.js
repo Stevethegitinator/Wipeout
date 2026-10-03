@@ -97,7 +97,7 @@ export function buildShipModel(team, number = 1) {
   const glow = new MeshBuilder(), trim = new MeshBuilder(), decal = new MeshBuilder();
   const P = new THREE.Color(team.primary), S = new THREE.Color(team.secondary), A = new THREE.Color(team.accent);
   const livery = (top, bot) => (y, r, k) => (y > top ? P : y < bot ? A : S);
-  let engines = [], engineR = 0.3, decals = [], lights = [];
+  let engines = [], engineR = 0.3, decals = [], lights = [], detail = null;
 
   const canopy = (z0, z1, w, y, h) => {
     loft(glass, [
@@ -129,6 +129,7 @@ export function buildShipModel(team, number = 1) {
     engines = [V(0, 0.08, 2.0)]; engineR = 0.34;
     decals = [[1.3, 0.08, 1.0, 0.9], [-1.3, 0.08, 1.0, 0.9]];
     lights = [V(2.1, 0.05, 1.1), V(-2.1, 0.05, 1.1)];
+    detail = { top: 0.5, vx: 0.3, flapX: 1.45, flapY: 0.08, flapZ: 1.4, flapW: 1.0 };
   } else if (team.style === 'delta') {
     loft(body, [
       ring(-2.7, 0.18, 0.04, 0.04, { p: 0.6 }),
@@ -152,6 +153,7 @@ export function buildShipModel(team, number = 1) {
     engines = [V(-0.5, 0.1, 1.95), V(0.5, 0.1, 1.95), V(-2.0, 0.12, 1.95), V(2.0, 0.12, 1.95)]; engineR = 0.24;
     decals = [[1.35, 0.09, 0.5, 0.9], [-1.35, 0.09, 0.5, 0.9]];
     lights = [V(2.35, 0.1, 1.5), V(-2.35, 0.1, 1.5)];
+    detail = { top: 0.45, vx: 0.45, flapX: 1.5, flapY: 0.09, flapZ: 1.65, flapW: 1.1 };
   } else if (team.style === 'twin') {
     for (const sx of [-1, 1]) {
       loft(body, [
@@ -175,6 +177,7 @@ export function buildShipModel(team, number = 1) {
     engines = [V(-1.0, 0.04, 2.0), V(1.0, 0.04, 2.0)]; engineR = 0.3;
     decals = [[0, 0.07, 0.55, 0.8]];
     lights = [V(1.45, 0.1, -0.6), V(-1.45, 0.1, -0.6)];
+    detail = { top: 0.4, vx: 0.25, flapX: 1.0, flapY: 0.4, flapZ: 1.75, flapW: 0.7 };
   } else {
     // 'brick': chunky armoured body with side pods and one tall fin
     loft(body, [
@@ -199,6 +202,17 @@ export function buildShipModel(team, number = 1) {
     engines = [V(0, 0.12, 2.0), V(-1.55, 0, 2.1), V(1.55, 0, 2.1)]; engineR = 0.3;
     decals = [[0.4, 0.66, 0.9, 0.7, 'side']];
     lights = [V(1.95, 0.0, -0.6), V(-1.95, 0.0, -0.6)];
+    detail = { top: 0.62, vx: 0.5, flapX: 1.55, flapY: 0.34, flapZ: 1.85, flapW: 0.7 };
+  }
+
+  // Surface detail: intake vents, panel seams and an antenna.
+  if (detail) {
+    const slat = new THREE.BoxGeometry(detail.vx * 2, 0.05, 0.07);
+    for (let k = 0; k < 5; k++) metal.addGeometry(slat, new THREE.Matrix4().makeTranslation(0, detail.top - 0.02, 0.55 + k * 0.16));
+    const seam = new THREE.BoxGeometry(detail.vx * 2.6, 0.03, 0.035);
+    for (const z of [-0.6, 0.25]) metal.addGeometry(seam, new THREE.Matrix4().makeTranslation(0, detail.top - 0.01, z));
+    const mast = new THREE.CylinderGeometry(0.015, 0.025, 0.7, 5);
+    metal.addGeometry(mast, new THREE.Matrix4().makeTranslation(detail.vx * 0.6, detail.top + 0.3, 1.0));
   }
 
   // Engine nozzles: dark metal shroud with a glowing core.
@@ -257,5 +271,20 @@ export function buildShipModel(team, number = 1) {
     m.matrixAutoUpdate = true;
     group.add(m);
   }
-  return { mesh: group, engines };
+  // Airbrake flaps: hinged at their front edge, raised by the race when braking.
+  const flaps = [];
+  if (detail) {
+    const flapGeo = new THREE.BoxGeometry(detail.flapW, 0.05, 0.45).translate(0, 0, 0.22);
+    const flapMat = psxMaterial({ color: team.secondary, lit: true, side: THREE.DoubleSide, rough: 0.3, metal: 0.5 });
+    for (const sx of [-1, 1]) {
+      const hinge = new THREE.Group();
+      hinge.position.set(sx * detail.flapX, detail.flapY + 0.06, detail.flapZ - 0.45);
+      const flap = new THREE.Mesh(flapGeo, flapMat);
+      flap.castShadow = true;
+      hinge.add(flap);
+      group.add(hinge);
+      flaps.push(hinge);
+    }
+  }
+  return { mesh: group, engines, flaps };
 }
