@@ -36,26 +36,59 @@ post.mat.uniforms.tDiffuse.value = rt.texture;
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.45, 0.85);
+// Light shafts: march from each pixel towards the sun, gathering bright sky.
+// Anything solid in between (hills, buildings, gantries) is dark and blocks it.
+const raysPass = new ShaderPass({
+  uniforms: { tDiffuse: { value: null }, uSun: { value: new THREE.Vector2(0.5, 0.8) }, uRays: { value: 0 }, uTint: { value: new THREE.Color(1, 0.92, 0.75) } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: `
+    uniform sampler2D tDiffuse; uniform vec2 uSun; uniform float uRays; uniform vec3 uTint;
+    varying vec2 vUv;
+    void main() {
+      vec3 base = texture2D(tDiffuse, vUv).rgb;
+      if (uRays <= 0.001) { gl_FragColor = vec4(base, 1.0); return; }
+      vec2 delta = (vUv - uSun) * (0.85 / 36.0);
+      vec2 p = vUv; float decay = 1.0; vec3 acc = vec3(0.0);
+      for (int i = 0; i < 36; i++) {
+        p -= delta;
+        vec3 s = texture2D(tDiffuse, clamp(p, 0.0, 1.0)).rgb;
+        float l = dot(s, vec3(0.2126, 0.7152, 0.0722));
+        acc += s * smoothstep(0.7, 1.4, l) * decay;
+        decay *= 0.955;
+      }
+      float fall = 1.0 - smoothstep(0.0, 0.9, length((vUv - uSun) * vec2(1.6, 1.0)));
+      gl_FragColor = vec4(base + acc / 36.0 * uTint * uRays * (0.4 + fall), 1.0);
+    }`,
+});
+composer.addPass(raysPass);
 composer.addPass(bloom);
 // Speed blur, colour fringing, per-circuit colour grade and vignette.
 const speedPass = new ShaderPass({
   uniforms: {
     tDiffuse: { value: null }, uBlur: { value: 0 }, uAberr: { value: 0 }, uSat: { value: 1 }, uContrast: { value: 1 },
     uTint: { value: new THREE.Vector3(1, 1, 1) }, uVignette: { value: 0.35 },
+    uHeatPos: { value: new THREE.Vector2(0.5, 0.3) }, uHeat: { value: 0 }, uTime: { value: 0 }, uAspect: { value: 1.6 },
   },
   vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
   fragmentShader: `
     uniform sampler2D tDiffuse; uniform float uBlur, uAberr, uSat, uContrast, uVignette; uniform vec3 uTint;
+    uniform vec2 uHeatPos; uniform float uHeat, uTime, uAspect;
     varying vec2 vUv;
     void main() {
-      vec2 dir = vUv - 0.5; float d = length(dir);
+      // Heat shimmer: rippling refraction in a plume behind the player's engines.
+      vec2 hv = (vUv - uHeatPos) * vec2(uAspect, 1.0);
+      float plume = hv.y < 0.0 ? length(vec2(hv.x * 1.6, hv.y * 0.45)) : length(vec2(hv.x * 1.6, hv.y * 3.0));
+      float hm = smoothstep(0.16, 0.0, plume) * uHeat;
+      vec2 uv = vUv + vec2(sin(vUv.y * 140.0 + uTime * 23.0) + sin(vUv.y * 61.0 - uTime * 17.0),
+                           cos(vUv.x * 110.0 - uTime * 19.0)) * 0.0028 * hm;
+      vec2 dir = uv - 0.5; float d = length(dir);
       float amt = uBlur * 0.03 * smoothstep(0.12, 0.7, d);
       vec3 c = vec3(0.0);
-      for (int i = 0; i < 8; i++) c += texture2D(tDiffuse, vUv - dir * amt * (float(i) / 7.0)).rgb;
+      for (int i = 0; i < 8; i++) c += texture2D(tDiffuse, uv - dir * amt * (float(i) / 7.0)).rgb;
       c /= 8.0;
       float ca = uAberr * 0.008 * d;
-      c.r = mix(c.r, texture2D(tDiffuse, vUv + dir * ca).r, step(0.0001, ca));
-      c.b = mix(c.b, texture2D(tDiffuse, vUv - dir * ca).b, step(0.0001, ca));
+      c.r = mix(c.r, texture2D(tDiffuse, uv + dir * ca).r, step(0.0001, ca));
+      c.b = mix(c.b, texture2D(tDiffuse, uv - dir * ca).b, step(0.0001, ca));
       float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
       c = mix(vec3(l), c, uSat);
       c = max(vec3(0.0), (c - 0.18) * uContrast + 0.18) * uTint;
@@ -119,6 +152,7 @@ function resize() {
     renderer.toneMappingExposure = 1.0;
     renderer.shadowMap.enabled = quality > 0;
     bloom.enabled = quality > 0;
+    raysPass.enabled = quality > 0;
     speedPass.uniforms.uBlur.value = 0;
     scene.traverse((o) => { if (o.material && o.material.needsUpdate !== undefined && o.isMesh) o.material.needsUpdate = true; });
   } else {
@@ -517,6 +551,7 @@ function render() {
   drawHUD();
 }
 
+const _sv = new THREE.Vector3(), _sw = new THREE.Vector3();
 function renderModern() {
   const r = game.race;
   if (r) {
@@ -525,6 +560,33 @@ function renderModern() {
     u.uBlur.value = game.state === 'race' && quality > 0 ? r.speedFx.blur : 0;
     u.uAberr.value = game.state === 'race' ? r.speedFx.aberration : 0;
     u.uSat.value = g.sat; u.uContrast.value = g.contrast; u.uTint.value.set(...g.tint);
+    u.uTime.value = game.t; u.uAspect.value = W / H;
+    // Heat shimmer behind the player's engines (or the craft the camera follows).
+    const ship = r.player || (r.attract && r.attract.target);
+    u.uHeat.value = 0;
+    if (ship && ship.engines) {
+      _sv.set(0, 0, 0);
+      for (const e of ship.engines) _sv.add(_sw.copy(e).applyQuaternion(ship.visual.quaternion));
+      _sv.multiplyScalar(1 / ship.engines.length).add(ship.visual.position).addScaledVector(ship.fwd, -1.5);
+      const dist = _sv.distanceTo(camera.position);
+      _sv.project(camera);
+      if (_sv.z < 1 && dist < 60) {
+        u.uHeatPos.value.set(_sv.x * 0.5 + 0.5, _sv.y * 0.5 + 0.5);
+        const thrust = ship.input.thrust ? 1 : 0.35;
+        u.uHeat.value = (thrust * 0.7 + (ship.boostTime > 0 ? 0.8 : 0)) * Math.min(1, 14 / Math.max(1, dist)) * (ship.visual.visible ? 1 : 0);
+      }
+    }
+    // Light shafts when the sun is in front of the camera.
+    raysPass.uniforms.uRays.value = 0;
+    if (r.sunSkyDir) {
+      camera.getWorldDirection(_sw);
+      const facing = _sw.dot(r.sunSkyDir);
+      _sv.copy(camera.position).addScaledVector(r.sunSkyDir, 3000).project(camera);
+      if (facing > 0 && _sv.z < 1) {
+        raysPass.uniforms.uSun.value.set(_sv.x * 0.5 + 0.5, _sv.y * 0.5 + 0.5);
+        raysPass.uniforms.uRays.value = 0.9 * Math.min(1, facing / 0.5) * (r.theme.night ? 0.4 : 1);
+      }
+    }
   }
   composer.render();
   if (game.state === 'menu' && game.menu.kind === 'team') {

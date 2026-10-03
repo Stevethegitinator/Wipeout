@@ -55,7 +55,8 @@ airbrake to swing the nose round tight corners.
   sun lighting with real-time shadows, sky reflections on the craft, bloom
   on glowing elements and filmic tone mapping. Detailed craft with glass
   canopies, glowing nozzles, light trails and race numbers. Speed blur and
-  streaks near top speed, a sun with lens flare, drifting clouds, valley
+  streaks near top speed, heat shimmer behind the engines, a sun with lens
+  flare and light shafts, drifting clouds, valley
   mist, grandstands, billboards, smoke and debris from explosions, and a
   colour grade for each circuit. Glowing edge strips and
   yellow chevron boards on corners make the track easy to read at speed.

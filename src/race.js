@@ -136,6 +136,7 @@ export class Race {
       map: this.glowTex, color: night ? 0xc8d8ff : 0xfff4d8, blending: THREE.AdditiveBlending, depthWrite: false, fog: false, toneMapped: false,
     }));
     const skyDir = new THREE.Vector3(this.sunDir.x, 0.22, this.sunDir.z).normalize();
+    this.sunSkyDir = night ? null : skyDir.clone(); // light shafts on daytime circuits
     disc.position.copy(skyDir).multiplyScalar(3400);
     disc.scale.setScalar(night ? 260 : 520);
     disc.renderOrder = -9;
