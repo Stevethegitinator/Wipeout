@@ -68,8 +68,10 @@ export function buildWorld(track) {
     }
   }
   const side = THREE.DoubleSide;
-  group.add(roadIn.build(psxMaterial({ map: TX.roadTexture(false, theme.accent), vertexColors: true, side, rough: 0.55, metal: 0.25, ...roadMaps })));
-  group.add(roadEdge.build(psxMaterial({ map: TX.roadTexture(true, theme.accent), vertexColors: true, side, rough: 0.55, metal: 0.25, ...roadMaps })));
+  const roads = [];
+  roads.push(roadIn.build(psxMaterial({ map: TX.roadTexture(false, theme.accent), vertexColors: true, side, rough: 0.55, metal: 0.25, ...roadMaps }))); // inner lanes
+  roads.push(roadEdge.build(psxMaterial({ map: TX.roadTexture(true, theme.accent), vertexColors: true, side, rough: 0.55, metal: 0.25, ...roadMaps })));
+  roads.forEach((r) => group.add(r));
   group.add(under.build(psxMaterial({ map: TX.underTexture(), vertexColors: true, side })));
 
   // ---- Barriers and tunnels ----------------------------------------------
@@ -424,7 +426,7 @@ export function buildWorld(track) {
   // ---- Themed scenery ----------------------------------------------------
   buildScenery(group, track, def.theme, rng, distToTrack, groundAt, night, cx, cz, size);
 
-  return { group, skyGroup, theme, clouds, mist };
+  return { group, skyGroup, theme, clouds, mist, roads, wet };
 }
 
 function buildScenery(group, track, theme, rng, distToTrack, groundAt, night, cx, cz, size) {

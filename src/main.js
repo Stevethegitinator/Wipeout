@@ -10,6 +10,7 @@ import { RenderPass } from '../vendor/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from '../vendor/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from '../vendor/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from '../vendor/addons/postprocessing/ShaderPass.js';
+import { GTAOPass } from '../vendor/addons/postprocessing/GTAOPass.js';
 import { particleScale } from './particles.js';
 import { buildShipModel } from './shipmodels.js';
 import { drawRaceHUD, text, panel, fmtTime, drawStatBar, teamColor } from './hud.js';
@@ -35,6 +36,11 @@ post.mat.uniforms.tDiffuse.value = rt.texture;
 // Modern pipeline: MSAA HDR render, bloom, filmic tone mapping.
 const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
 composer.addPass(new RenderPass(scene, camera));
+// Ambient occlusion: soft contact shadows in corners and under objects (High and Ultra).
+const aoPass = new GTAOPass(scene, camera, 256, 256);
+aoPass.updateGtaoMaterial({ radius: 2.5, distanceExponent: 1.5, thickness: 2, distanceFallOff: 1, samples: 12 });
+aoPass.blendIntensity = 0.85;
+composer.addPass(aoPass);
 const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.55, 0.45, 0.85);
 // Light shafts: march from each pixel towards the sun, gathering bright sky.
 // Anything solid in between (hills, buildings, gantries) is dark and blocks it.
@@ -98,7 +104,7 @@ const speedPass = new ShaderPass({
 });
 composer.addPass(speedPass);
 composer.addPass(new OutputPass());
-const qualityPasses = [];
+const qualityPasses = [[aoPass, 2]];
 
 // Team preview scene for the selection screen.
 const previewScene = new THREE.Scene();
@@ -625,6 +631,7 @@ function renderModern() {
       }
     }
   }
+  if (r) r.renderReflection(renderer, W * renderer.getPixelRatio(), H * renderer.getPixelRatio());
   composer.render();
   if (game.state === 'menu' && game.menu.kind === 'team') {
     const ti = game.menu.fixedTeam ?? game.menu.sel;

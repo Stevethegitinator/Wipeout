@@ -14,6 +14,7 @@ import { Trail, SpeedLines, Smoke, Debris, shieldMaterial } from './effects.js';
 import { Lensflare, LensflareElement } from '../vendor/addons/objects/Lensflare.js';
 import { EXRLoader } from '../vendor/addons/loaders/EXRLoader.js';
 import { Weather } from './weather.js';
+import { TrackReflection } from './reflection.js';
 
 // Real-world environment maps (Poly Haven, CC0), loaded once and shared.
 const envCache = new Map();
@@ -81,6 +82,12 @@ export class Race {
     this.speedFx = { blur: 0, aberration: 0 };
     if (renderStyle.modern) this.setupLighting(renderer);
     else scene.fog = null;
+    // Mirror-image reflections on the road at High and Ultra.
+    if (renderStyle.modern && renderStyle.quality >= 2 && world.roads) {
+      this.reflection = new TrackReflection(renderStyle.quality >= 3 ? 0.6 : 0.4);
+      this.reflection.uniforms.uReflStrength.value = world.wet ? 1.1 : 0.6;
+      for (const r of world.roads) this.reflection.patch(r.material);
+    }
     if (renderStyle.modern && renderStyle.weather && this.theme.weather) {
       const count = [600, 1500, 3000, 5000][renderStyle.quality] * (this.theme.weather === 'sand' ? 1.6 : 1) | 0;
       this.weather = new Weather(this.theme.weather, count, this.glowTex);
@@ -248,6 +255,7 @@ export class Race {
 
   dispose() {
     this.disposed = true;
+    if (this.reflection) this.reflection.dispose();
     this.scene.remove(this.root);
     this.scene.environment = null;
     if (this.envRT) this.envRT.dispose();
@@ -650,6 +658,16 @@ export class Race {
     if (renderStyle.modern) this.fx.speed.update(dt, cam, s.fwd, Math.min(1.3, fast));
     this.speedFx.blur += (Math.min(1.3, fast) - this.speedFx.blur) * Math.min(1, dt * 4);
     this.speedFx.aberration += ((s.boostTime > 0 ? 1 : 0) + this.camShake * 0.8 - this.speedFx.aberration) * Math.min(1, dt * 6);
+  }
+
+  // Render the road reflection for the craft the camera is following.
+  renderReflection(renderer, width, height) {
+    if (!this.reflection) return;
+    const s = this.player || (this.attract && this.attract.target) || this.ships[0];
+    const f = s.frame;
+    if (!f || !f.P || f.gap) return;
+    this.reflection.setSize(width, height);
+    this.reflection.render(renderer, this.scene, this.camera, f.P, f.U, this.world.roads);
   }
 
   // Keep the shadow-casting sun centred on the action.
