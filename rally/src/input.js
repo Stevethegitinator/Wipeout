@@ -58,7 +58,7 @@ export class Input {
       // Keyboard: wind the wheel on progressively (slower at speed, like a driver
       // feeding in lock), and let it spring back to centre quickly.
       const fast = Math.min(1, Math.max(0, (speed - 5) / 30));
-      const on = 4.5 - 2.7 * fast;
+      const on = 6 - 2.8 * fast;
       const rate = steerTarget === 0 ? 6 : Math.sign(steerTarget) !== Math.sign(this.steerSmooth) && this.steerSmooth !== 0 ? on * 2.2 : on;
       const d = steerTarget - this.steerSmooth;
       this.steerSmooth += Math.sign(d) * Math.min(Math.abs(d), rate * dt);

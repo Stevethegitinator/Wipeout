@@ -126,17 +126,17 @@ export class Car {
     if (this.gear < 0) { const t = thr; thr = brk; brk = t; }
     this.throttle = thr; this.brake = brk; this.handbrake = input.handbrake;
 
-    // Steering. Full lock shrinks with speed to roughly what the car can use at
-    // the grip limit, so steering is proportional: half input is a brisk corner,
-    // full input is the limit, and a tap at speed no longer pivots the car. Extra lock is available only
+    // Steering. Full lock shrinks with speed (about 35° at walking pace, 20° at
+    // 50 km/h, 9° at 100 km/h) so a full input at speed takes the car to the limit
+    // and a little past it, without pivoting it on the spot. Extra lock is available only
     // for counter-steer, up to the car's slip angle.
     const vf = Math.max(0, fwdSpeed);
     const fsf = SURFACES[this.wheels[0].surface] || SURFACES.gravel;
     const fmu = fsf.mu * (this.wet ? 0.85 : 1);
     // Geometric angle for a grip-limited turn, plus a little for the fronts to
     // run more slip than the rears; body slip does the rest at the limit.
-    const gripLock = this.wheelbase * G * fmu / Math.max(vf * vf, 1) + fsf.peak * 0.26;
-    const baseLock = Math.min(0.58, gripLock);
+    const gripLock = this.wheelbase * G * fmu * 2.0 / Math.max(vf * vf, 1) + 0.09;
+    const baseLock = Math.min(0.6, gripLock);
     this.maxLock = baseLock;
     const counter = input.steer !== 0 && Math.sign(input.steer) === -Math.sign(this.slipAngle);
     const maxLock = baseLock + (counter ? Math.min(0.55, Math.abs(this.slipAngle)) : 0);
@@ -145,14 +145,14 @@ export class Car {
     // travel (a natural partial counter-steer). Drift assist adds to it.
     let castor = 0;
     if (fwdSpeed > 3) {
-      const loose = 1 - Math.min(1, Math.abs(input.steer) * 3);
+      const loose = 1 - Math.min(1, Math.abs(input.steer) * 10);
       // Drift assist strengthens it, but only while the driver's hands are off the
       // wheel, so it never fights or stacks on top of their own steering.
       castor = -this.slipAngle * loose * (0.45 + 0.4 * this.assist);
     }
     const target = clamp(input.steer, -1, 1) * maxLock + steerPull + castor;
     // Rack speed: about 2.4 rad/s at the wheels, quicker to centre.
-    const rate = Math.abs(target) < Math.abs(this.steerAngle) ? 3.6 : 2.4;
+    const rate = Math.abs(target) < Math.abs(this.steerAngle) ? 4.5 : 3.2;
     this.steerAngle += clamp(target - this.steerAngle, -rate * dt, rate * dt);
 
     // Gear changes

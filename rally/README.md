@@ -53,8 +53,9 @@ Touch screens get on-screen pedals and steering.
   tarmac, gravel, wet gravel, red dirt, loose verge, compacted snow, ice,
   snowbanks, deep snow, grass, scrub, mud and water.
 - **Steering** is proportional and speed-sensitive, like a real rally car:
-  full lock shrinks with speed to what the tyres can use at the limit, so half
-  input is a brisk corner and full input is the limit; tyres build cornering
+  full lock shrinks with speed (about 35° at walking pace, 20° at 50 km/h,
+  9° at 100 km/h), so a full input takes the car to its grip limit without
+  pivoting it; tyres build cornering
   force over a short rolling distance; castor lets the wheel self-centre into
   a slide when you let go; and keyboard steering winds on progressively,
   slower at speed. Extra lock is only available for counter-steer.
