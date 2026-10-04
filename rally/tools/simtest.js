@@ -15,7 +15,7 @@ for (const st of stages) {
   const road = new Road(st);
   buildLayout(road, 1);
   for (const spec of cars) {
-    const car = new Car(spec, road, { assist: +(process.env.ASSIST ?? 1) });
+    const car = new Car(spec, road, { assist: +(process.env.ASSIST ?? 0) }); // the AI counter-steers for itself
     car.place(road.start - 8);
     const ai = new Driver(car);
     const dt = 1 / 60;

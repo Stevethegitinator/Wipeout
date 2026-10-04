@@ -52,9 +52,15 @@ Touch screens get on-screen pedals and steering.
   collisions so cars roll, dig in and dent. Fourteen surfaces: tarmac, wet
   tarmac, gravel, wet gravel, red dirt, loose verge, compacted snow, ice,
   snowbanks, deep snow, grass, scrub, mud and water.
-- **Drift assist** (Options, on by default): auto counter-steer that fades out
-  when you counter-steer yourself, and a stability aid that only steps in past
-  about 25° of slide. Turn it off for the raw car.
+- **Steering** is proportional and speed-sensitive, like a real rally car:
+  full lock shrinks with speed to what the tyres can use at the limit, so half
+  input is a brisk corner and full input is the limit; tyres build cornering
+  force over a short rolling distance; castor lets the wheel self-centre into
+  a slide when you let go; and keyboard steering winds on progressively,
+  slower at speed. Extra lock is only available for counter-steer.
+- **Drift assist** (Options, on by default): when you let go of the steering
+  the car catches its own slide, and a stability aid steps in past about 25°
+  of slide. It never adds to your own counter-steer. Turn it off for the raw car.
 - **Four cars** with different drivetrains: Kaizen R4 Turbo (4WD, rear-biased),
   Torva GT-Four (heavy 4WD, huge turbo), Hornet RS 1800 (classic RWD, 8,800 rpm)
   and Brisa S16 Kit Car (light FWD).

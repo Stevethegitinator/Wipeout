@@ -600,7 +600,7 @@ function raceUpdate(dt) {
   if (R.replay) { replayUpdate(dt); return; }
   R.t += dt;
   // Inputs.
-  let inp = input.drive(dt);
+  let inp = input.drive(dt, car.speed);
   if (settings.gearbox === 'manual') { inp.shiftUp = input.hit('KeyE', 'PadY', 'PadRB'); inp.shiftDown = input.hit('KeyQ', 'PadLB'); }
   if (R.driver) inp = R.driver.update(dt);
   if (R.phase === 'intro') {

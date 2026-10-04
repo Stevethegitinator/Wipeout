@@ -67,7 +67,7 @@ export const STAGES = [
     id: 'wales', rally: 'Rally of the Moors', country: 'GB', name: 'Cwm Glas (Rain)', seed: 2417, length: 4000,
     surface: 'gravel', verge: 'loose', offroad: 'mud', edge: 'ditch', width: 7.0, heading: 2.2,
     grades: GR(2, 4, 5, 5, 2, 0.8), straight: [5, 60], longStraight: 0.08,
-    hillScale: 480, hillHeight: 85, ridged: false, profileSmooth: 50, maxGrade: 0.1, blend: 28,
+    hillScale: 480, hillHeight: 85, ridged: false, profileSmooth: 68, maxGrade: 0.09, blend: 28,
     featureRate: 0.75, jumpRate: 0.2, splashRate: 0.35,
     trees: { kind: 'pine', density: 1.25, near: 6 }, grass: 1.2, rocks: 0.7,
     sky: { elev: 18, azim: 100, turb: 9, cloud: 0.92 }, hdri: 'dawn', envInt: 0.55, sunInt: 1.1,

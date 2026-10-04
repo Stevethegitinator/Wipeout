@@ -25,17 +25,21 @@ export class Driver {
     const vh = v > 4 ? Math.atan2(car.vel.x, car.vel.z) : hd;
     const err = wrapAngle(want - vh);
     const wheelAim = wrapAngle(want - hd) + err * 0.6; // overshoot the travel error a touch
-    const lock = 0.58 - 0.42 * clamp((v - 2) / 36, 0, 1) + Math.min(0.5, Math.abs(car.slipAngle) * 0.85);
+    const counter = Math.sign(wheelAim) === Math.sign(car.slipAngle) && Math.abs(car.slipAngle) > 0.02;
+    const lock = (car.maxLock || 0.3) + (counter ? Math.min(0.55, Math.abs(car.slipAngle)) : 0);
     o.steer = clamp(-wheelAim / lock, -1, 1);
     if (!car.onGround) o.steer *= 0.3; // keep the wheels straight in the air
     const sf = SURFACES[car.surfaceName] || SURFACES.gravel;
-    const mu = (road.stage.surface === 'tarmac' ? 1.0 : Math.max(sf.mu, 0.6)) * (car.wet ? 0.8 : road.stage.surface === 'snow' ? 0.9 : 1);
+    const mu = (road.stage.surface === 'tarmac' ? 1.0 : Math.max(sf.mu, 0.6)) * (car.wet ? 0.74 : road.stage.surface === 'snow' ? 0.8 : 1);
     const vT = road.adviseSpeed(car.s + 3, mu * 0.98 * this.aggr);
     if (v > vT + 1.2) { o.throttle = 0; o.brake = clamp((v - vT) / 5, 0.25, 1); }
     else { o.brake = 0; o.throttle = clamp((vT - v) / 2 + 0.55, 0.3, 1); }
     if (Math.abs(err) > 0.9 && v > 4) o.throttle *= 0.5;
+    // Ease off when the driven wheels spin up.
+    const spin = Math.max(...car.wheels.map((w) => (w.contact ? w.slipLong : 0)));
+    if (spin > 0.25) o.throttle *= clamp(1 - (spin - 0.25) * 1.5, 0.3, 1);
     // Feed the throttle in gently while the car is still sideways.
-    o.throttle *= clamp(1 - (Math.abs(car.slipAngle) - 0.2) * 2.5, 0.3, 1);
+    o.throttle *= clamp(1 - (Math.abs(car.slipAngle) - 0.14) * 2.5, 0.25, 1);
     // Flick the handbrake into hairpins.
     this.hbTimer -= dt;
     if (this.hbTimer <= 0 && Math.abs(err) > 0.55 && v > 8 && v < 18) this.hbTimer = 0.35;

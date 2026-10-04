@@ -30,7 +30,7 @@ export class Car {
     const m = (this.mass = spec.mass + 160); // + crew and fuel
     const L = 4.3, W = 1.78, H = 1.25;
     // Inertia (body frame), a little under a solid box because mass is low and central.
-    this.I = new THREE.Vector3((m / 12) * (H * H + L * L) * 0.85, (m / 12) * (W * W + L * L) * 0.85, (m / 12) * (W * W + H * H) * 0.9);
+    this.I = new THREE.Vector3((m / 12) * (H * H + L * L) * 0.85, (m / 12) * (W * W + L * L) * 0.95, (m / 12) * (W * W + H * H) * 0.9);
     this.invI = new THREE.Vector3(1 / this.I.x, 1 / this.I.y, 1 / this.I.z);
     this.pos = V(); this.vel = V(); this.ang = V(); this.quat = new THREE.Quaternion();
     this.wheelbase = spec.body === 'classic' || spec.body === 'hatch' ? 2.45 : 2.55;
@@ -44,7 +44,7 @@ export class Car {
       { mount: new THREE.Vector3(tw, 0.06, zr), front: false, left: true },
       { mount: new THREE.Vector3(-tw, 0.06, zr), front: false, left: false },
     ].map((w) => Object.assign(w, {
-      len: 0.25, prevLen: 0.25, omega: 0, angle: 0, load: 0, contact: false, slip: 0, slipLat: 0, slipLong: 0,
+      len: 0.25, prevLen: 0.25, omega: 0, alphaF: 0, angle: 0, load: 0, contact: false, slip: 0, slipLat: 0, slipLong: 0,
       surface: 'gravel', point: V(), normal: V(0, 1, 0), steer: 0, Fx: 0, Fy: 0, vLong: 0, vLat: 0, hit: 0, puncture: false,
     }));
     this.restLen = 0.34;
@@ -85,7 +85,7 @@ export class Car {
     this.pos.set(x, y + 0.53, z);
     this.quat.setFromAxisAngle(_a.set(0, 1, 0), f.h);
     this.vel.set(0, 0, 0); this.ang.set(0, 0, 0);
-    for (const w of this.wheels) { w.omega = 0; w.len = w.prevLen = 0.25; }
+    for (const w of this.wheels) { w.omega = 0; w.len = w.prevLen = 0.25; w.alphaF = 0; }
     this.rpm = this.spec.idle; this.gear = 1; this.boost = 0; this.upsideTime = 0;
     this.s = this.lastS = s;
   }
@@ -126,21 +126,33 @@ export class Car {
     if (this.gear < 0) { const t = thr; thr = brk; brk = t; }
     this.throttle = thr; this.brake = brk; this.handbrake = input.handbrake;
 
-    // Steering: fast rack, lock narrows with speed but opens up for counter-steer in a slide.
+    // Steering. Full lock shrinks with speed to roughly what the car can use at
+    // the grip limit, so steering is proportional: half input is a brisk corner,
+    // full input is the limit, and a tap at speed no longer pivots the car. Extra lock is available only
+    // for counter-steer, up to the car's slip angle.
     const vf = Math.max(0, fwdSpeed);
-    const baseLock = lerp(0.58, 0.16, smoothstep(2, 38, vf));
-    const slideRoom = Math.min(0.5, Math.abs(this.slipAngle) * 0.85);
-    const maxLock = baseLock + slideRoom;
+    const fsf = SURFACES[this.wheels[0].surface] || SURFACES.gravel;
+    const fmu = fsf.mu * (this.wet ? 0.85 : 1);
+    // Geometric angle for a grip-limited turn, plus a little for the fronts to
+    // run more slip than the rears; body slip does the rest at the limit.
+    const gripLock = this.wheelbase * G * fmu / Math.max(vf * vf, 1) + fsf.peak * 0.26;
+    const baseLock = Math.min(0.58, gripLock);
+    this.maxLock = baseLock;
+    const counter = input.steer !== 0 && Math.sign(input.steer) === -Math.sign(this.slipAngle);
+    const maxLock = baseLock + (counter ? Math.min(0.55, Math.abs(this.slipAngle)) : 0);
     const steerPull = dmg.steering * 0.06;
-    // Drift assist: the front wheels drift toward the direction of travel
-    // (auto counter-steer), fading out when the driver steers into the slide.
-    let assistSteer = 0;
-    if (this.assist > 0 && fwdSpeed > 4) {
-      const into = Math.sign(input.steer) === Math.sign(this.slipAngle) ? 0 : 1; // player already counter-steering?
-      assistSteer = -this.slipAngle * 0.55 * this.assist * (0.4 + 0.6 * into) * (1 - Math.abs(input.steer) * 0.5);
+    // Castor: with the wheel left loose, the fronts trail toward the direction of
+    // travel (a natural partial counter-steer). Drift assist adds to it.
+    let castor = 0;
+    if (fwdSpeed > 3) {
+      const loose = 1 - Math.min(1, Math.abs(input.steer) * 3);
+      // Drift assist strengthens it, but only while the driver's hands are off the
+      // wheel, so it never fights or stacks on top of their own steering.
+      castor = -this.slipAngle * loose * (0.45 + 0.4 * this.assist);
     }
-    const target = clamp(input.steer, -1, 1) * maxLock + steerPull + assistSteer;
-    const rate = 3.2 + (Math.abs(target) < Math.abs(this.steerAngle) ? 2.2 : 0);
+    const target = clamp(input.steer, -1, 1) * maxLock + steerPull + castor;
+    // Rack speed: about 2.4 rad/s at the wheels, quicker to centre.
+    const rate = Math.abs(target) < Math.abs(this.steerAngle) ? 3.6 : 2.4;
     this.steerAngle += clamp(target - this.steerAngle, -rate * dt, rate * dt);
 
     // Gear changes
@@ -156,10 +168,10 @@ export class Car {
         // Down-shifts follow road speed so wheelspin doesn't make the box hunt.
         const groundRpm = Math.max(0, fwdSpeed) * this.ratio() * toRpm;
         const up = spec.redline - 250, down = spec.redline * 0.5;
-        if (wheelRpm > up && groundRpm > up * 0.8 && this.gear < ng && this.clutch > 0.95) this.shift(this.gear + 1);
+        if (wheelRpm > up && groundRpm > up * 0.62 && this.gear < ng && this.clutch > 0.95) this.shift(this.gear + 1); // short-shift out of wheelspin
         else if (this.gear > 1) {
           const lower = Math.max(0, fwdSpeed) * this.ratio(this.gear - 1) * toRpm;
-          if (groundRpm < down && lower < spec.redline - 1100) this.shift(this.gear - 1);
+          if (groundRpm < down && wheelRpm < up * 0.8 && lower < spec.redline - 1100) this.shift(this.gear - 1);
         }
       }
       if (input.shiftUp && this.gear < ng) this.shift(this.gear + 1);
@@ -315,11 +327,15 @@ export class Car {
       w.load = load;
       const nominal = this.mass * G / 4;
       let mu = sf.mu * (1 - 0.08 * (Math.min(load / nominal, 2.5) - 1));
+      if (!w.front) mu *= 1.05; // rally set-up: a planted rear
       if (w.puncture) mu *= 0.55;
       mu *= 1 - 0.15 * this.damage.suspension;
       // Slip.
       const sr = (w.omega * this.R - vLong) / Math.max(Math.abs(vLong), 3);
-      const alpha = Math.atan2(vLat, Math.abs(vLong) + 0.6);
+      // Tyres build cornering force over a short rolling distance (relaxation length).
+      const alphaNow = Math.atan2(vLat, Math.abs(vLong) + 0.6);
+      w.alphaF += (alphaNow - w.alphaF) * Math.min(1, (Math.abs(vLong) + 1) * dt / 0.5);
+      const alpha = w.alphaF;
       const peakA = sf.peak * 0.85, peakS = sf.peak * 0.75;
       const sN = sr / peakS, aN = alpha / peakA;
       const rho = Math.hypot(sN, aN);

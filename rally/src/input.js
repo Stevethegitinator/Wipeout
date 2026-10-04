@@ -36,7 +36,7 @@ export class Input {
   endFrame() { this.pressed.clear(); }
 
   // Driving controls (keyboard steering is smoothed so you can feather it).
-  drive(dt) {
+  drive(dt, speed = 0) {
     const pad = this.pad;
     let steerTarget = (this.k('ArrowRight', 'KeyD') ? 1 : 0) - (this.k('ArrowLeft', 'KeyA') ? 1 : 0);
     let throttle = this.k('ArrowUp', 'KeyW') ? 1 : 0;
@@ -55,8 +55,11 @@ export class Input {
     if (t.active) { steerTarget = t.steer; throttle = Math.max(throttle, t.throttle); brake = Math.max(brake, t.brake); handbrake = Math.max(handbrake, t.handbrake); analog = true; }
     if (analog) this.steerSmooth = steerTarget;
     else {
-      // Keyboard: ramp in, faster when returning or reversing direction.
-      const rate = steerTarget === 0 ? 7 : Math.sign(steerTarget) !== Math.sign(this.steerSmooth) && this.steerSmooth !== 0 ? 9 : 4.2;
+      // Keyboard: wind the wheel on progressively (slower at speed, like a driver
+      // feeding in lock), and let it spring back to centre quickly.
+      const fast = Math.min(1, Math.max(0, (speed - 5) / 30));
+      const on = 4.5 - 2.7 * fast;
+      const rate = steerTarget === 0 ? 6 : Math.sign(steerTarget) !== Math.sign(this.steerSmooth) && this.steerSmooth !== 0 ? on * 2.2 : on;
       const d = steerTarget - this.steerSmooth;
       this.steerSmooth += Math.sign(d) * Math.min(Math.abs(d), rate * dt);
     }
