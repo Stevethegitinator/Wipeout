@@ -33,6 +33,27 @@ const mobile = /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
 const settings = Object.assign({ quality: mobile ? 1 : 2, voice: 'george', gearbox: 'auto', camera: 0, master: 0.9, engine: 1, codriver: 1, music: 0.6, difficulty: 1, assist: 1 }, load('settings', {}));
 if (params.has('q')) settings.quality = clamp(+params.get('q'), 0, 3);
 
+// ---- Height fog --------------------------------------------------------------------
+// Replaces three.js's distance fog: mist is thickest in the dips below the camera
+// and thins out over the hills, so valleys fill with haze and ridgelines stand clear.
+THREE.ShaderChunk.fog_pars_vertex = '#ifdef USE_FOG\n varying float vFogDepth; varying vec3 vFogWorld;\n#endif';
+THREE.ShaderChunk.fog_vertex = '#ifdef USE_FOG\n vFogDepth = - mvPosition.z;\n vFogWorld = cameraPosition + transpose(mat3(viewMatrix)) * mvPosition.xyz;\n#endif';
+THREE.ShaderChunk.fog_pars_fragment = THREE.ShaderChunk.fog_pars_fragment.replace('varying float vFogDepth;', 'varying float vFogDepth; varying vec3 vFogWorld;');
+THREE.ShaderChunk.fog_fragment = `#ifdef USE_FOG
+  #ifdef FOG_EXP2
+    float fogDist = length(vFogWorld - cameraPosition);
+    float hk = 0.022;                       // density halves every ~30 m of height
+    float y0 = cameraPosition.y - 6.0, dy = vFogWorld.y - cameraPosition.y;
+    float h0 = exp(-hk * (cameraPosition.y - y0));
+    float avg = abs(dy) > 0.5 ? h0 * (1.0 - exp(-hk * dy)) / (hk * dy) : h0;
+    float tau = fogDensity * fogDensity * fogDist * fogDist * clamp(avg, 0.15, 3.0);
+    float fogFactor = 1.0 - exp(-tau);
+  #else
+    float fogFactor = smoothstep( fogNear, fogFar, vFogDepth );
+  #endif
+  gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+#endif`;
+
 // ---- Renderer & post -----------------------------------------------------------
 const canvas = document.getElementById('game');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
