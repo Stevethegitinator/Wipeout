@@ -1,10 +1,13 @@
 # Credits
 
-- **Environment maps** (`assets/hdri/*.exr.js`: forest, park, sunrise, sky,
-  dawn, night, studio): HDRIs from [Poly Haven](https://polyhaven.com/hdris)
-  (CC0), resized and packaged by
-  [@pmndrs/assets](https://www.npmjs.com/package/@pmndrs/assets) (CC0). They
-  light and reflect on the scene; the visible skies are drawn by the game.
+- **Stage skies** (`assets/hdri/*_1k.exr`) and **surface scans**
+  (`assets/tex/*`): from [Poly Haven](https://polyhaven.com) (CC0), fetched by
+  `tools/fetch_assets.py`. The skies light and reflect on the scene (the visible
+  sky is drawn by the game); the scans are the road, ground and rock surfaces.
+  Skies: aarfontein_dirt_road (Jarod Guest, Dario Barresi), drakensberg_solitary_mountain (Dimitrios Savva, Jarod Guest), forest_grove (Dimitrios Savva, Jarod Guest), forest_slope (Andreas Mischok), hochsal_forest (Adrian Kubasa), kloppenheim_02 (Greg Zaal).
+  Surfaces: asphalt_02 (Rob Tuytel), brown_mud_leaves_01 (Rob Tuytel), brown_mud_rocks_01 (Rob Tuytel), dark_rock (Amal Kumar), dry_ground_01 (Rob Tuytel), dry_ground_rocks (Rob Tuytel), forest_floor (eye-candy.xyz), forest_ground_04 (Rob Tuytel, Rico Cilliers), grass_ground (Charlotte Baglioni), gravel_ground_01 (Rob Tuytel), leafy_grass (Charlotte Baglioni), lichen_rock (Rico Cilliers), mossy_rock (Rob Tuytel), red_dirt_mud_01 (Rob Tuytel), rock_face (Greg Zaal, Dario Barresi), rock_face_03 (Dario Barresi, Rico Cilliers), rocky_gravel (Dario Barresi, Dimitrios Savva), snow_02 (Rob Tuytel), snow_03 (Rob Tuytel), snow_05 (Rob Tuytel), stony_dirt_path (eye-candy.xyz), terrain_red_01 (Rob Tuytel), withered_grass (Charlotte Baglioni).
+- **Showroom sky** (`assets/hdri/studio.exr.js`): a Poly Haven HDRI (CC0)
+  resized and packaged by [@pmndrs/assets](https://www.npmjs.com/package/@pmndrs/assets) (CC0).
 - **Co-driver voices** (`assets/voice/george.js`, `assets/voice/emma.js`):
   generated with [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M)
   (Apache-2.0) via [kokoro-onnx](https://github.com/thewh1teagle/kokoro-onnx)

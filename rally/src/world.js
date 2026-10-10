@@ -30,7 +30,8 @@ function addWind(mat, amp, base = 0, stiff = 2) {
 }
 
 export class World {
-  constructor(renderer, scene, road, layout, stage, quality) {
+  constructor(renderer, scene, road, layout, stage, quality, scan = null) {
+    this.scan = scan; // scanned surfaces (assets.js), or null to use the procedural ones
     this.renderer = renderer; this.scene = scene; this.road = road; this.L = layout; this.stage = stage; this.quality = quality;
     this.group = new THREE.Group();
     scene.add(this.group);
@@ -61,11 +62,26 @@ export class World {
   terrainMaterial() {
     const st = this.stage;
     const gt = TX.groundTextures(st);
-    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: st.surface === 'snow' ? 0.55 : 0.95, metalness: 0 });
+    const sc = this.scan;
+    // Scanned layers tile at their real-world size; the procedural ones at 3.2 m.
+    const L = (k) => (sc?.[k] ? { map: sc[k].map, normal: sc[k].normal || gt[k].normal, arm: sc[k].arm || sc[k].map, size: sc[k].size } : { map: gt[k].map, normal: gt[k].normal, arm: gt[k].map, size: 3.2 });
+    const lg = L('grass'), ld = L('dirt'), lr = L('rock');
+    const scanned = !!sc;
+    // Pull the grass scan toward the stage's own grass colour (keeping its brightness).
+    const pg = new THREE.Color(st.palette.grass), lum = 0.2126 * pg.r + 0.7152 * pg.g + 0.0722 * pg.b;
+    const grassTint = new THREE.Vector3(pg.r / lum, pg.g / lum, pg.b / lum);
+    // Bring each scan's brightness most of the way to the stage's designed colour.
+    const Y = (c) => 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b;
+    const norm = (k, pal) => (sc?.[k]?.avg ? Math.min(1.6, Math.max(0.45, Y(new THREE.Color(pal)) / Math.max(0.02, Y(sc[k].avg)))) : 1);
+    const bright = new THREE.Vector3(norm('grass', st.palette.grass), norm('dirt', st.palette.dirt), norm('rock', st.palette.rock));
+    const mat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: st.surface === 'snow' ? 0.6 : 0.95, metalness: 0 });
     mat.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, {
-        tGrass: { value: gt.grass.map }, tDirt: { value: gt.dirt.map }, tRock: { value: gt.rock.map },
-        nGrass: { value: gt.grass.normal }, nDirt: { value: gt.dirt.normal }, nRock: { value: gt.rock.normal },
+        tGrass: { value: lg.map }, tDirt: { value: ld.map }, tRock: { value: lr.map },
+        nGrass: { value: lg.normal }, nDirt: { value: ld.normal }, nRock: { value: lr.normal },
+        aGrass: { value: lg.arm }, aDirt: { value: ld.arm }, aRock: { value: lr.arm },
+        uScale: { value: new THREE.Vector3(1 / lg.size, 1 / ld.size, 1 / lr.size) }, uScanned: { value: scanned ? 1 : 0 },
+        uGrassTint: { value: grassTint }, uBright: { value: bright },
         tMacro: { value: gt.macro },
       });
       sh.vertexShader = sh.vertexShader
@@ -73,12 +89,13 @@ export class World {
         .replace('#include <worldpos_vertex>', '#include <worldpos_vertex>\nvSplat = aSplat; vWPos = (modelMatrix * vec4(transformed, 1.0)).xyz; vWNorm = normalize(mat3(modelMatrix) * objectNormal);');
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
-          uniform sampler2D tGrass, tDirt, tRock, nGrass, nDirt, nRock, tMacro;
+          uniform sampler2D tGrass, tDirt, tRock, nGrass, nDirt, nRock, aGrass, aDirt, aRock, tMacro;
+          uniform vec3 uScale; uniform float uScanned; uniform vec3 uGrassTint; uniform vec3 uBright;
           varying vec4 vSplat; varying vec3 vWPos; varying vec3 vWNorm;
-          vec3 splatW;
+          vec3 splatW; vec2 uvG, uvD, uvR; float gRough;
           vec3 tex3(sampler2D t, vec2 uv) { return mix(texture2D(t, uv).rgb, texture2D(t, uv * 0.27 + 0.31).rgb, 0.45); }`)
         .replace('#include <map_fragment>', `
-          vec2 tuv = vWPos.xz / 3.2;
+          uvG = vWPos.xz * uScale.x; uvD = vWPos.xz * uScale.y + 0.37; uvR = vec2(vWPos.x + vWPos.z, vWPos.y * 1.6) * uScale.z * 0.8;
           float macro = texture2D(tMacro, vWPos.xz / 260.0).r;
           float macro2 = texture2D(tMacro, vWPos.xz / 47.0 + 0.5).r;
           vec4 sp = vSplat;
@@ -87,19 +104,27 @@ export class World {
           sp.z = clamp(sp.z + (macro2 - 0.5) * 0.6 * sp.z * (1.0 - sp.z) * 4.0, 0.0, 1.0);
           float wr = sp.z, wd = sp.y * (1.0 - wr), wg = max(0.0, 1.0 - wr - wd);
           splatW = vec3(wg, wd, wr);
-          vec3 rockUV = tex3(tRock, vec2(vWPos.x + vWPos.z, vWPos.y * 1.6) / 4.0);
-          vec3 col = wg * tex3(tGrass, tuv) + wd * tex3(tDirt, tuv) + wr * rockUV;
-          col *= 0.72 + 0.56 * macro;
-          col *= mix(1.0, 0.82 + 0.3 * macro2, 0.6);
+          vec3 gcol = tex3(tGrass, uvG);
+          gcol = mix(gcol, dot(gcol, vec3(0.2126, 0.7152, 0.0722)) * uGrassTint, 0.45 * uScanned);
+          vec3 kb = mix(vec3(1.0), uBright, 0.75 * uScanned);
+          vec3 col = wg * gcol * kb.x + wd * tex3(tDirt, uvD) * kb.y + wr * tex3(tRock, uvR) * kb.z;
+          // Ambient occlusion and roughness from the scans' ARM maps.
+          vec3 arm = wg * texture2D(aGrass, uvG).rgb + wd * texture2D(aDirt, uvD).rgb + wr * texture2D(aRock, uvR).rgb;
+          col *= mix(1.0, arm.r, 0.85 * uScanned);
+          gRough = 1.0;
+          col *= mix(0.72 + 0.56 * macro, 0.86 + 0.28 * macro, uScanned);
+          col *= mix(1.0, 0.82 + 0.3 * macro2, mix(0.6, 0.35, uScanned));
           col = mix(col, col * vec3(1.06, 0.98, 0.86), sp.w);
           diffuseColor.rgb *= col;`)
         .replace('#include <normal_fragment_maps>', `
-          vec3 nm = splatW.x * (texture2D(nGrass, tuv).xyz * 2.0 - 1.0) + splatW.y * (texture2D(nDirt, tuv).xyz * 2.0 - 1.0) + splatW.z * (texture2D(nRock, vec2(vWPos.x + vWPos.z, vWPos.y * 1.6) / 4.0).xyz * 2.0 - 1.0);
+          vec3 nm = splatW.x * (texture2D(nGrass, uvG).xyz * 2.0 - 1.0) + splatW.y * (texture2D(nDirt, uvD).xyz * 2.0 - 1.0) + splatW.z * (texture2D(nRock, uvR).xyz * 2.0 - 1.0);
           vec3 wn = normalize(vWNorm);
           vec3 T = normalize(vec3(1.0, 0.0, 0.0) - wn * wn.x); vec3 B = normalize(cross(T, wn));
           vec3 pn = normalize(wn + (T * nm.x - B * nm.y) * 0.9);
-          normal = normalize((viewMatrix * vec4(pn, 0.0)).xyz);`);
+          normal = normalize((viewMatrix * vec4(pn, 0.0)).xyz);`)
+        .replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor *= gRough;');
     };
+    mat.customProgramCacheKey = () => 'terrain' + (scanned ? 's' : 'p');
     return mat;
   }
 
@@ -251,6 +276,42 @@ export class World {
       polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2,
     });
     if (st.wet) { mat.color.setScalar(0.78); mat.envMapIntensity = 1.6; }
+    const sr = this.scan?.road;
+    if (sr) {
+      // The scan supplies the surface detail; the procedural texture still lays
+      // out the wheel lines, puddles, painted lines and soft verges, as a tint.
+      const across = (st.width + 2.5) / sr.size, along = TX.ROAD_TEX_METRES / sr.size;
+      const detail = sr.map.clone(); detail.needsUpdate = true;
+      for (const t of [sr.normal, sr.arm]) if (t) t.repeat.set(across, along);
+      mat.normalMap = sr.normal; mat.normalScale.set(0.75, 0.75);
+      if (sr.arm) { mat.aoMap = sr.arm; mat.aoMapIntensity = 0.4; }
+      // Keep the procedural roughness layout (glossy puddles, polished snow lines).
+      mat.roughness = 1;
+      const base = new THREE.Color(st.palette.road);
+      mat.onBeforeCompile = (sh) => {
+        sh.uniforms.tDetail = { value: detail };
+        sh.uniforms.uDetailScale = { value: new THREE.Vector2(across, along) };
+        sh.uniforms.uBase = { value: base };
+        sh.uniforms.uDetAvg = { value: sr.avg };
+        sh.fragmentShader = sh.fragmentShader
+          .replace('#include <common>', '#include <common>\nuniform sampler2D tDetail; uniform vec2 uDetailScale; uniform vec3 uBase; uniform vec3 uDetAvg;')
+          .replace('#include <map_fragment>', `#include <map_fragment>
+            {
+              vec3 proc = diffuseColor.rgb;
+              vec3 det = texture2D(tDetail, vMapUv * uDetailScale).rgb;
+              det = mix(det, texture2D(tDetail, vMapUv * uDetailScale * 0.31 + 0.17).rgb, 0.3);
+              // Scan as detail: its variation around its own mean, on the designed road colour.
+              vec3 detail = clamp(det / max(uDetAvg, vec3(0.02)), 0.0, 2.5);
+              float dl = dot(detail, vec3(0.333));
+              detail = mix(vec3(dl), detail, 0.5);
+              vec3 ratio = clamp(proc / max(uBase, vec3(0.02)), 0.3, 2.2);
+              float paint = smoothstep(1.6, 2.1, dot(ratio, vec3(0.333)));
+              diffuseColor.rgb = mix(proc * detail, proc, paint);
+            }`);
+      };
+      mat.customProgramCacheKey = () => 'roadscan';
+      g.setAttribute('uv1', g.attributes.uv);
+    }
     // Split into pieces so off-screen road is culled.
     const per = 120 * m * 6; // ~240 m per piece
     for (let start = 0; start < idx.length; start += per) {
@@ -524,7 +585,8 @@ export class World {
       g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
       return g;
     });
-    const mat = new THREE.MeshStandardMaterial({ map: gt.rock.map, normalMap: gt.rock.normal, roughness: 0.9, color: st.surface === 'snow' ? 0xb8bcc4 : 0xffffff });
+    const rk = this.scan?.rock;
+    const mat = new THREE.MeshStandardMaterial({ map: rk?.map || gt.rock.map, normalMap: rk?.normal || gt.rock.normal, roughness: 0.9, color: st.surface === 'snow' ? 0xb8bcc4 : 0xffffff });
     const buckets = [[], [], []];
     L.rocks.forEach((k) => buckets[Math.floor(r() * 3)].push(k));
     buckets.forEach((arr, v) => {
@@ -583,7 +645,7 @@ export class World {
     // Stone walls (tarmac stages).
     if (L.walls.length) {
       const gt = TX.groundTextures(st);
-      const wm = new THREE.MeshStandardMaterial({ map: gt.rock.map, normalMap: gt.rock.normal, roughness: 0.92, color: 0xd8d0c0 });
+      const wm = new THREE.MeshStandardMaterial({ map: this.scan?.rock?.map || gt.rock.map, normalMap: this.scan?.rock?.normal || gt.rock.normal, roughness: 0.92, color: 0xd8d0c0 });
       let total = 0; for (const w of L.walls) total += w.length;
       const geo = new THREE.BoxGeometry(1.35, 0.9, 0.7); geo.translate(0, 0.35, 0);
       const im = new THREE.InstancedMesh(geo, wm, total);

@@ -5,14 +5,22 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { EXRLoader } from '../../vendor/addons/loaders/EXRLoader.js';
 import { Lensflare, LensflareElement } from '../../vendor/addons/objects/Lensflare.js';
 import { softDot } from './textures.js';
+import { hdriUrl } from './assets.js';
 
 const envCache = new Map();
+// Full-resolution skies are plain .exr files (see assets/tex/manifest.json); the
+// small studio sky for the showroom is packaged as a JS module.
 export function loadEnvironment(name, renderer) {
   if (!envCache.has(name)) {
-    envCache.set(name, import(`../assets/hdri/${name}.exr.js`).then(({ default: b64 }) => {
+    const bytesP = hdriUrl(name).then(async (url) => {
+      if (url) return (await fetch(url)).arrayBuffer();
+      const { default: b64 } = await import(`../assets/hdri/${name}.exr.js`);
       const bin = atob(b64), bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const td = new EXRLoader().parse(bytes.buffer);
+      return bytes.buffer;
+    });
+    envCache.set(name, bytesP.then((buf) => {
+      const td = new EXRLoader().parse(buf);
       const tex = new THREE.DataTexture(td.data, td.width, td.height, td.format, td.type);
       tex.colorSpace = td.colorSpace ?? THREE.LinearSRGBColorSpace;
       tex.flipY = false;

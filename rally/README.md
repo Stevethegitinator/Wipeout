@@ -74,8 +74,9 @@ Touch screens get on-screen pedals and steering.
 - **Modes**: Rally Championship (six stages, aggregate time against seven
   crews, service between stages), Single Stage and Time Trial (chase your own
   ghost; best times and ghosts are saved). Rival pace has three levels.
-- **Graphics**: physically based shading with photographed sky lighting
-  (Poly Haven HDRIs), ACES tone mapping, soft sun shadows that follow the car,
+- **Graphics**: physically based shading with photographed sky lighting and
+  scanned road, ground and rock surfaces (Poly Haven, CC0; see
+  `tools/fetch_assets.py`), height fog that pools in the valleys, ACES tone mapping, soft sun shadows that follow the car,
   bloom, sun shafts through the trees, lens flare, ambient occlusion (Ultra),
   speed blur, film grain and a colour grade per stage. Terrain blends grass,
   dirt and rock by slope with normal-mapped detail; the road has worn wheel

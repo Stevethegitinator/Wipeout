@@ -5,7 +5,7 @@ import { extname, join, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(fileURLToPath(import.meta.url), '..', '..');
-const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png' };
+const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.jpg': 'image/jpeg', '.exr': 'image/x-exr', '.md': 'text/markdown' };
 const port = Number(process.env.PORT) || 8080;
 
 createServer(async (req, res) => {
