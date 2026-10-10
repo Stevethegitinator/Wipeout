@@ -59,8 +59,8 @@ export async function loadStageSurfaces(stageId, renderer) {
   return out.road && out.grass ? out : null;
 }
 
-// URL of a downloaded sky, if present.
-export async function hdriUrl(name) {
+// Module name of a downloaded sky (packaged as base64 JS), if present.
+export async function hdriModule(name) {
   const m = await manifest();
-  return m?.hdris?.[name] ? new URL(`hdri/${name}_1k.exr`, base).href : null;
+  return m?.hdris?.[name] ? `${name}_1k` : null;
 }

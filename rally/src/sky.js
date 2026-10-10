@@ -5,16 +5,15 @@ import * as THREE from '../../vendor/three.module.min.js';
 import { EXRLoader } from '../../vendor/addons/loaders/EXRLoader.js';
 import { Lensflare, LensflareElement } from '../../vendor/addons/objects/Lensflare.js';
 import { softDot } from './textures.js';
-import { hdriUrl } from './assets.js';
+import { hdriModule } from './assets.js';
 
 const envCache = new Map();
-// Full-resolution skies are plain .exr files (see assets/tex/manifest.json); the
-// small studio sky for the showroom is packaged as a JS module.
+// Skies are packaged as JS modules (base64 OpenEXR) so they load anywhere
+// scripts do; stage skies are listed in assets/tex/manifest.json.
 export function loadEnvironment(name, renderer) {
   if (!envCache.has(name)) {
-    const bytesP = hdriUrl(name).then(async (url) => {
-      if (url) return (await fetch(url)).arrayBuffer();
-      const { default: b64 } = await import(`../assets/hdri/${name}.exr.js`);
+    const bytesP = hdriModule(name).then(async (mod) => {
+      const { default: b64 } = await import(`../assets/hdri/${mod || name}.exr.js`);
       const bin = atob(b64), bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       return bytes.buffer;

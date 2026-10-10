@@ -1,6 +1,6 @@
 # Credits
 
-- **Stage skies** (`assets/hdri/*_1k.exr`) and **surface scans**
+- **Stage skies** (`assets/hdri/*_1k.exr.js`) and **surface scans**
   (`assets/tex/*`): from [Poly Haven](https://polyhaven.com) (CC0), fetched by
   `tools/fetch_assets.py`. The skies light and reflect on the scene (the visible
   sky is drawn by the game); the scans are the road, ground and rock surfaces.

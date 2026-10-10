@@ -7,7 +7,7 @@ each texture's real-world size and authors (used for tiling and credits).
 Needs network access to api.polyhaven.com and dl.polyhaven.org, and ffmpeg
 (to re-encode the JPEGs smaller).
 """
-import json, os, subprocess, tempfile, urllib.request
+import base64, json, os, subprocess, tempfile, urllib.request
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "assets")
 
@@ -62,10 +62,12 @@ def main():
         files = json.loads(get(f"https://api.polyhaven.com/files/{name}"))
         info = json.loads(get(f"https://api.polyhaven.com/info/{name}"))
         os.makedirs(os.path.join(ROOT, "hdri"), exist_ok=True)
-        path = os.path.join(ROOT, "hdri", f"{name}_1k.exr")
+        # Packaged as a JS module (base64 EXR) so it loads anywhere scripts load.
+        path = os.path.join(ROOT, "hdri", f"{name}_1k.exr.js")
         if not os.path.exists(path):
-            with open(path, "wb") as f:
-                f.write(get(files["hdri"]["1k"]["exr"]["url"]))
+            data = base64.b64encode(get(files["hdri"]["1k"]["exr"]["url"])).decode()
+            with open(path, "w") as f:
+                f.write("// CC0 sky from Poly Haven (see ../../CREDITS.md), base64-encoded OpenEXR.\nexport default '" + data + "';\n")
         manifest["hdris"][name] = {"authors": list(info.get("authors", {}).keys())}
         print("hdri", name)
     manifest["stages"] = {k: {**v, "hdri": STAGE_HDRIS[k]} for k, v in STAGE_TEXTURES.items()}
